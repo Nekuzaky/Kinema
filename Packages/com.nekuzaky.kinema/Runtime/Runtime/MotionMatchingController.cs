@@ -60,6 +60,10 @@ namespace Kinema.MotionMatching
         [Header("Trajectory Prediction")]
         [SerializeField] private TrajectoryPredictionSettings _prediction = TrajectoryPredictionSettings.Default;
 
+        [Header("Events")]
+        [Tooltip("Relay AnimationEvents of the active clip via SendMessage, matching Mecanim semantics.")]
+        [SerializeField] private bool _relayAnimationEvents = true;
+
         [Header("Manual Intent (used when no ILocomotionProvider is present)")]
         [SerializeField] private Vector3 _desiredVelocity;
 
@@ -77,6 +81,20 @@ namespace Kinema.MotionMatching
 
         /// <summary>Contact bitmask of the frame currently playing (bit b = contact bone b grounded).</summary>
         public byte CurrentContacts => _initialized ? _database.GetContacts(MapCurrentFrame()) : (byte)0;
+
+        /// <summary>Candidate frames must carry ALL these tag bits. 0 = no requirement.</summary>
+        public ulong RequiredTags { get; set; }
+
+        /// <summary>Frames carrying ANY of these tag bits are skipped. 0 = nothing excluded.</summary>
+        public ulong ExcludedTags { get; set; }
+
+        /// <summary>Convenience: resolves a tag name against the database and adds it to the required mask.</summary>
+        public void RequireTag(string tagName, bool required = true)
+        {
+            if (_database == null) return;
+            ulong mask = _database.GetTagMask(tagName);
+            if (required) RequiredTags |= mask; else RequiredTags &= ~mask;
+        }
         public int CurrentClipIndex => _initialized ? _slotClipIndex[_activeSlot] : -1;
         public float CurrentClipTime => _initialized ? (float)_slotTime[_activeSlot] : 0f;
 
@@ -249,11 +267,47 @@ namespace Kinema.MotionMatching
         private void AdvanceClocks(float dt)
         {
             float step = dt * _playbackSpeed;
-            _slotTime[_activeSlot] = WrapTime(_slotClipIndex[_activeSlot], _slotTime[_activeSlot] + step);
+            double before = _slotTime[_activeSlot];
+            _slotTime[_activeSlot] = WrapTime(_slotClipIndex[_activeSlot], before + step);
             if (_blending)
             {
                 int other = 1 - _activeSlot;
                 _slotTime[other] = WrapTime(_slotClipIndex[other], _slotTime[other] + step);
+            }
+
+            if (_relayAnimationEvents && step > 0f)
+                RelayAnimationEvents(_slotClipIndex[_activeSlot], (float)before, (float)_slotTime[_activeSlot]);
+        }
+
+        /// <summary>
+        /// Fires the active clip's AnimationEvents crossed this frame via SendMessage (Mecanim
+        /// semantics), handling loop wrap. The manual-clock playback bypasses Unity's own dispatch.
+        /// </summary>
+        private void RelayAnimationEvents(int clipIndex, float from, float to)
+        {
+            AnimationClip clip = _database.GetClip(clipIndex).Clip;
+            if (clip == null) return;
+            AnimationEvent[] events = clip.events;
+            if (events == null || events.Length == 0) return;
+
+            if (to >= from)
+            {
+                DispatchEventsInRange(events, from, to);
+            }
+            else // looped this frame
+            {
+                DispatchEventsInRange(events, from, clip.length + 1e-4f);
+                DispatchEventsInRange(events, -1e-4f, to);
+            }
+        }
+
+        private void DispatchEventsInRange(AnimationEvent[] events, float from, float to)
+        {
+            for (int i = 0; i < events.Length; i++)
+            {
+                AnimationEvent e = events[i];
+                if (e.time > from && e.time <= to && !string.IsNullOrEmpty(e.functionName))
+                    gameObject.SendMessage(e.functionName, e, SendMessageOptions.DontRequireReceiver);
             }
         }
 
@@ -273,7 +327,7 @@ namespace Kinema.MotionMatching
             _query.SetTrajectory(_database, _desiredTrajectory);
             _query.SetPoseFromFrame(_database, currentFrame);
 
-            MotionMatchResult result = _matcher.Search(_query);
+            MotionMatchResult result = _matcher.Search(_query, requiredTags: RequiredTags, excludedTags: ExcludedTags);
 
             // Cost of simply continuing the current clip a little further.
             int continuationFrame = ContinuationFrame(currentFrame);

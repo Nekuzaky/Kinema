@@ -23,15 +23,31 @@ namespace Kinema.MotionMatching.Samples
 
         public Vector3 DesiredVelocity => _desiredVelocity;
 
-        // Face the direction of travel; returning zero lets the controller derive facing from velocity.
-        public Vector3 DesiredFacing => Vector3.zero;
+        /// <summary>
+        /// Strafe mode (hold right mouse / gamepad left trigger): face the camera forward while
+        /// moving in any direction. Otherwise zero, letting the controller face the travel direction.
+        /// </summary>
+        public Vector3 DesiredFacing
+        {
+            get
+            {
+                if (!_strafe || _cameraTransform == null) return Vector3.zero;
+                Vector3 fwd = _cameraTransform.forward;
+                fwd.y = 0f;
+                return fwd.sqrMagnitude > 1e-6f ? fwd.normalized : Vector3.zero;
+            }
+        }
+
+        public bool IsStrafing => _strafe;
 
         #endregion
 
         #region Private and Protected
 
         private InputAction _moveAction;
+        private InputAction _strafeAction;
         private Vector3 _desiredVelocity;
+        private bool _strafe;
 
         #endregion
 
@@ -47,15 +63,20 @@ namespace Kinema.MotionMatching.Samples
                 .With("Right", "<Keyboard>/d");
             _moveAction.AddBinding("<Gamepad>/leftStick");
 
+            _strafeAction = new InputAction("Strafe", InputActionType.Button);
+            _strafeAction.AddBinding("<Mouse>/rightButton");
+            _strafeAction.AddBinding("<Gamepad>/leftTrigger");
+
             if (_cameraTransform == null && Camera.main != null)
                 _cameraTransform = Camera.main.transform;
         }
 
-        private void OnEnable() => _moveAction.Enable();
-        private void OnDisable() => _moveAction.Disable();
+        private void OnEnable() { _moveAction.Enable(); _strafeAction.Enable(); }
+        private void OnDisable() { _moveAction.Disable(); _strafeAction.Disable(); }
 
         private void Update()
         {
+            _strafe = _strafeAction.IsPressed();
             Vector2 move = _moveAction.ReadValue<Vector2>();
 
             Vector3 forward = _cameraTransform != null ? Flatten(_cameraTransform.forward) : Vector3.forward;

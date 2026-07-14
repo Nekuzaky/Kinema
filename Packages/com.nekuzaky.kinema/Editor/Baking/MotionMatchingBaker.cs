@@ -80,6 +80,7 @@ namespace Kinema.MotionMatching.Editor
 
                 var allFeatures = new List<float>();
                 var allContacts = new List<byte>();
+                var allTags = new List<ulong>();
                 var frames = new List<MotionFrameInfo>();
                 var clipEntries = new List<MotionClipEntry>();
                 float totalDuration = 0f;
@@ -100,8 +101,13 @@ namespace Kinema.MotionMatching.Editor
                     allFeatures.AddRange(raw);
                     allContacts.AddRange(clipContacts);
                     float frameDt = 1f / fps;
+                    ClipTagTrack track = config.FindTagTrack(clip);
                     for (int f = 0; f < clipFrames; f++)
-                        frames.Add(new MotionFrameInfo(c, f * frameDt));
+                    {
+                        float t = f * frameDt;
+                        frames.Add(new MotionFrameInfo(c, t));
+                        allTags.Add(track?.MaskAt(t) ?? 0ul);
+                    }
 
                     clipEntries.Add(new MotionClipEntry
                     {
@@ -136,7 +142,8 @@ namespace Kinema.MotionMatching.Editor
                     frames.ToArray(), clipEntries.ToArray(),
                     config.DefaultWeights, fps,
                     DateTime.UtcNow.ToString("u"), totalDuration,
-                    allContacts.ToArray(), contactBoneIndices);
+                    allContacts.ToArray(), contactBoneIndices,
+                    allTags.ToArray(), System.Linq.Enumerable.ToArray(config.TagNames));
 
                 string path = SaveDatabase(config, database, existingDatabase != null);
 

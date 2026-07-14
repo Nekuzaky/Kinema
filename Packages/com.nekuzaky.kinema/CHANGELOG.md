@@ -4,6 +4,21 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-07-14
+
+Control release.
+
+### Added
+- Semantic tags: a 64-tag vocabulary on the config, per-clip tag ranges, baked into the database as
+  per-frame bitmasks. The search filters candidates with `RequiredTags` / `ExcludedTags` masks
+  (controller properties, plus `RequireTag(name)` helper); filtering happens inside the Burst job.
+- Tags tab in the editor window: visual per-clip timeline (one lane per tag, colored range blocks)
+  with numeric editing, stored on the config.
+- Strafe mode in the sample input provider (hold right mouse / gamepad left trigger): the character
+  faces the camera while moving in any direction. Pair with a "Strafe" tag on strafe clips.
+- AnimationEvent relay: events of the active clip fire via SendMessage with Mecanim semantics
+  (manual-clock playback bypasses Unity's own dispatch), loop-wrap safe. Toggleable.
+
 ## [0.3.0] - 2026-07-14
 
 Motion quality release.

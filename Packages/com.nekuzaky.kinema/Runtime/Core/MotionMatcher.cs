@@ -47,6 +47,7 @@ namespace Kinema.MotionMatching
         private NativeArray<float> _nativeFeatures;
         private NativeArray<float> _nativeWeights;
         private NativeArray<float> _nativeQuery;
+        private NativeArray<ulong> _nativeTags;
         private NativeArray<float> _chunkBestCost;
         private NativeArray<int> _chunkBestFrame;
         private readonly int _chunkCount;
@@ -63,6 +64,9 @@ namespace Kinema.MotionMatching
             _nativeFeatures = new NativeArray<float>(database.Features, Allocator.Persistent);
             _nativeWeights = new NativeArray<float>(database.Dimension, Allocator.Persistent);
             _nativeQuery = new NativeArray<float>(database.Dimension, Allocator.Persistent);
+            _nativeTags = database.HasTags
+                ? new NativeArray<ulong>(database.FrameTags, Allocator.Persistent)
+                : new NativeArray<ulong>(database.FrameCount, Allocator.Persistent); // zeroed = untagged
             _chunkCount = (database.FrameCount + ChunkSize - 1) / ChunkSize;
             _chunkBestCost = new NativeArray<float>(_chunkCount, Allocator.Persistent);
             _chunkBestFrame = new NativeArray<int>(_chunkCount, Allocator.Persistent);
@@ -86,8 +90,12 @@ namespace Kinema.MotionMatching
         /// <summary>
         /// Finds the lowest-cost frame for the given query. <paramref name="ignoreFrame"/> and its
         /// close neighbours can be excluded to avoid re-selecting the frame already playing.
+        /// <paramref name="requiredTags"/>: candidate frames must carry ALL these tag bits;
+        /// <paramref name="excludedTags"/>: frames carrying ANY of these bits are skipped.
         /// </summary>
-        public MotionMatchResult Search(MotionMatchingQuery query, int ignoreFrame = -1, int ignoreRadius = 0)
+        public MotionMatchResult Search(
+            MotionMatchingQuery query, int ignoreFrame = -1, int ignoreRadius = 0,
+            ulong requiredTags = 0ul, ulong excludedTags = 0ul)
         {
             _nativeQuery.CopyFrom(query.Values);
 
@@ -96,6 +104,9 @@ namespace Kinema.MotionMatching
                 Features = _nativeFeatures,
                 Weights = _nativeWeights,
                 Query = _nativeQuery,
+                Tags = _nativeTags,
+                RequiredTags = requiredTags,
+                ExcludedTags = excludedTags,
                 Dimension = _database.Dimension,
                 FrameCount = _database.FrameCount,
                 ChunkSize = ChunkSize,
@@ -146,6 +157,7 @@ namespace Kinema.MotionMatching
             _nativeFeatures.Dispose();
             _nativeWeights.Dispose();
             _nativeQuery.Dispose();
+            _nativeTags.Dispose();
             _chunkBestCost.Dispose();
             _chunkBestFrame.Dispose();
         }
@@ -160,6 +172,8 @@ namespace Kinema.MotionMatching
             [ReadOnly] public NativeArray<float> Features;
             [ReadOnly] public NativeArray<float> Weights;
             [ReadOnly] public NativeArray<float> Query;
+            [ReadOnly] public NativeArray<ulong> Tags;
+            public ulong RequiredTags, ExcludedTags;
             public int Dimension, FrameCount, ChunkSize;
             public int IgnoreStart, IgnoreEnd;
 
@@ -177,6 +191,10 @@ namespace Kinema.MotionMatching
                 for (int f = start; f < end; f++)
                 {
                     if (f >= IgnoreStart && f <= IgnoreEnd) continue;
+
+                    ulong tags = Tags[f];
+                    if ((tags & RequiredTags) != RequiredTags) continue;
+                    if ((tags & ExcludedTags) != 0ul) continue;
 
                     int offset = f * Dimension;
                     float cost = 0f;

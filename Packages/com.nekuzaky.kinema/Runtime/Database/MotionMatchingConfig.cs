@@ -38,11 +38,28 @@ namespace Kinema.MotionMatching
         [Tooltip("Clips baked into the database. Locomotion clips (walk / run / turns / idle) for a V1.")]
         [SerializeField] private List<AnimationClip> _clips = new List<AnimationClip>();
 
+        [Header("Tags")]
+        [Tooltip("Project tag vocabulary (max 64). Ranges on clips reference these by index.")]
+        [SerializeField] private List<string> _tagNames = new List<string>();
+
+        [Tooltip("Tag ranges authored per clip. Edited visually in the window's Tags tab.")]
+        [SerializeField] private List<ClipTagTrack> _tagTracks = new List<ClipTagTrack>();
+
         public FeatureSchema Schema => _schema;
         public FeatureWeights DefaultWeights => _defaultWeights;
         public int BakeFrameRate => _bakeFrameRate;
         public GameObject RigPrefab => _rigPrefab;
         public IReadOnlyList<AnimationClip> Clips => _clips;
+        public IReadOnlyList<string> TagNames => _tagNames;
+        public IReadOnlyList<ClipTagTrack> TagTracks => _tagTracks;
+
+        /// <summary>Tag track for a clip, or null when none authored.</summary>
+        public ClipTagTrack FindTagTrack(AnimationClip clip)
+        {
+            for (int i = 0; i < _tagTracks.Count; i++)
+                if (_tagTracks[i].Clip == clip) return _tagTracks[i];
+            return null;
+        }
 
         #endregion
 

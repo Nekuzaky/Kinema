@@ -12,8 +12,10 @@ namespace Kinema.MotionMatching.Editor
     {
         #region Private and Protected
 
-        private enum Tab { Overview, Database, Bake, Debug, Settings }
-        private static readonly string[] TabNames = { "Overview", "Database", "Bake", "Debug", "Settings" };
+        private enum Tab { Overview, Database, Bake, Tags, Debug, Settings }
+        private static readonly string[] TabNames = { "Overview", "Database", "Bake", "Tags", "Debug", "Settings" };
+
+        private readonly TagTimelineDrawer _tagDrawer = new TagTimelineDrawer();
 
         [SerializeField] private MotionMatchingConfig _config;
         [SerializeField] private MotionMatchingDatabase _database;
@@ -71,6 +73,7 @@ namespace Kinema.MotionMatching.Editor
                 case Tab.Overview: DrawOverview(); break;
                 case Tab.Database: DrawDatabase(); break;
                 case Tab.Bake: DrawBake(); break;
+                case Tab.Tags: DrawTags(); break;
                 case Tab.Debug: DrawDebug(); break;
                 case Tab.Settings: DrawSettings(); break;
             }
@@ -284,6 +287,25 @@ namespace Kinema.MotionMatching.Editor
                 _bakeMessage = "Bake failed: " + report.Error;
                 _bakeMessageType = MessageType.Error;
             }
+        }
+
+        #endregion
+
+        #region Tools and Utilities — Tags
+
+        private void DrawTags()
+        {
+            _config = (MotionMatchingConfig)EditorGUILayout.ObjectField("Config", _config, typeof(MotionMatchingConfig), false);
+            if (_config == null)
+            {
+                MotionMatchingStyles.HelpRow("Assign a config to author tags.", MessageType.Info);
+                return;
+            }
+
+            SerializedObject so = GetConfigSerialized();
+            so.Update();
+            _tagDrawer.Draw(_config, so);
+            so.ApplyModifiedProperties();
         }
 
         #endregion

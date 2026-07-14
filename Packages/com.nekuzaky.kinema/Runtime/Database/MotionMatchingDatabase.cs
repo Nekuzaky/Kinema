@@ -32,6 +32,10 @@ namespace Kinema.MotionMatching
         [SerializeField] private byte[] _contacts = Array.Empty<byte>();
         [SerializeField] private int[] _contactBoneIndices = Array.Empty<int>();
 
+        // Semantic tags: one 64-bit mask per frame, names indexed by bit.
+        [SerializeField] private ulong[] _frameTags = Array.Empty<ulong>();
+        [SerializeField] private string[] _tagNames = Array.Empty<string>();
+
         [Header("Bake Metadata")]
         [SerializeField] private FeatureWeights _defaultWeights = FeatureWeights.Default;
         [SerializeField] private int _bakeFrameRate;
@@ -58,6 +62,10 @@ namespace Kinema.MotionMatching
         public int[] ContactBoneIndices => _contactBoneIndices;
         public int ContactBoneCount => _contactBoneIndices?.Length ?? 0;
         public bool HasContacts => _contacts != null && _contacts.Length == _frameCount && ContactBoneCount > 0;
+
+        public bool HasTags => _frameTags != null && _frameTags.Length == _frameCount && _tagNames.Length > 0;
+        public string[] TagNames => _tagNames;
+        public ulong[] FrameTags => _frameTags;
 
         #endregion
 
@@ -121,6 +129,20 @@ namespace Kinema.MotionMatching
             }
         }
 
+        /// <summary>Tag mask of a frame (0 when the database was baked without tags).</summary>
+        public ulong GetFrameTags(int frameIndex)
+        {
+            return HasTags ? _frameTags[frameIndex] : 0ul;
+        }
+
+        /// <summary>Mask of a tag by name, or 0 when unknown.</summary>
+        public ulong GetTagMask(string tagName)
+        {
+            for (int i = 0; i < _tagNames.Length && i < 64; i++)
+                if (_tagNames[i] == tagName) return 1ul << i;
+            return 0ul;
+        }
+
         /// <summary>Contact bitmask of a frame: bit b set = contact bone b grounded.</summary>
         public byte GetContacts(int frameIndex)
         {
@@ -171,10 +193,14 @@ namespace Kinema.MotionMatching
             string bakeDateUtc,
             float totalDuration,
             byte[] contacts = null,
-            int[] contactBoneIndices = null)
+            int[] contactBoneIndices = null,
+            ulong[] frameTags = null,
+            string[] tagNames = null)
         {
             _contacts = contacts ?? Array.Empty<byte>();
             _contactBoneIndices = contactBoneIndices ?? Array.Empty<int>();
+            _frameTags = frameTags ?? Array.Empty<ulong>();
+            _tagNames = tagNames ?? Array.Empty<string>();
             _schema = schema;
             _dimension = schema.Dimension;
             _frameCount = frames.Length;
