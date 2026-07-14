@@ -588,21 +588,20 @@ namespace Kinema.MotionMatching.Editor
 
         #region Tools and Utilities — Settings
 
-        [SerializeField] private bool _showRuntimeParams = true;
-        [SerializeField] private bool _showBakeParams = true;
         private SerializedObject _controllerSerialized;
 
         /// <summary>
         /// The full parameter surface in one place: every runtime field of the selected controller
-        /// (live-editable in play mode) and every bake-time field of the config.
+        /// (live-editable in play mode) and every bake-time field of the config. Uses plain framed
+        /// sections rather than foldout header groups, which cannot contain the List/array drawers
+        /// these objects expose.
         /// </summary>
         private void DrawSettings()
         {
             // ----- Controller: all runtime parameters -----
             _controller = (MotionMatchingController)EditorGUILayout.ObjectField("Controller", _controller, typeof(MotionMatchingController), true);
 
-            _showRuntimeParams = EditorGUILayout.BeginFoldoutHeaderGroup(_showRuntimeParams, "Runtime — Controller");
-            if (_showRuntimeParams)
+            using (MotionMatchingStyles.BeginSection("Runtime — Controller"))
             {
                 if (_controller == null)
                 {
@@ -622,15 +621,11 @@ namespace Kinema.MotionMatching.Editor
                     }
                 }
             }
-            EditorGUILayout.EndFoldoutHeaderGroup();
-
-            EditorGUILayout.Space(6);
 
             // ----- Config: all bake-time parameters -----
             _config = (MotionMatchingConfig)EditorGUILayout.ObjectField("Config", _config, typeof(MotionMatchingConfig), false);
 
-            _showBakeParams = EditorGUILayout.BeginFoldoutHeaderGroup(_showBakeParams, "Bake — Config");
-            if (_showBakeParams)
+            using (MotionMatchingStyles.BeginSection("Bake — Config"))
             {
                 if (_config == null)
                 {
@@ -642,7 +637,6 @@ namespace Kinema.MotionMatching.Editor
                     MotionMatchingStyles.HelpRow("Schema, storage and mirroring changes alter the baked data — rebake afterwards (Bake tab).", MessageType.Warning);
                 }
             }
-            EditorGUILayout.EndFoldoutHeaderGroup();
         }
 
         /// <summary>Every serialized field of the controller, grouped by its own headers, applied live.</summary>
