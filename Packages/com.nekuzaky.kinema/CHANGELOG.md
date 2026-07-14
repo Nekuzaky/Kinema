@@ -4,6 +4,33 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-07-14
+
+Tooling and demo-gameplay release.
+
+### Added
+- Overview dashboard: stat cards (frames / clips / dims / memory) and a subsystem status board
+  (database, contacts, tags, mirroring, profiles, storage) with actionable detail per row.
+- Frame Inspector in the Database tab: scrub any baked frame and read back its denormalized data —
+  root speed, per-bone positions and weights, grounded feet, active tags.
+- Cost sparkline in the Debug tab: total-cost history over the last 120 searches with jump markers.
+- Bake pre-flight: rig/clips/schema checklist plus estimated frame count and asset size
+  (mirroring and 16-bit storage factored in) before committing to a bake.
+- Full parameter surface in Settings: every controller field (live in play mode, immediate weight
+  resync) and every config field, plus one-click calibration profile buttons.
+- Demo vault: procedural vault clip + motion event with warped contact, VaultTrigger (chest-ray
+  probe, obstacle top 0.35-1.15 m, Space / gamepad South), optional Auto Vault for AI.
+- AIFollowProvider sample: target-seeking intent through the same ILocomotionProvider contract as
+  the player, with arrival slow-down.
+
+### Fixed
+- Backward teleport on clip loop: looping slot clocks are now monotonic (manual wrapping made the
+  Animator emit a negative root-motion delta every loop).
+- Procedural gait: human cadence (one leg cycle per clip), arms lowered from the T-pose with
+  chain-composed elbows, level feet, pelvis sway, speed-scaled torso lean.
+- FollowCamera auto-targets the matched character when its serialized reference is missing.
+- Editor-time fake-null after AssetDatabase.Refresh when wiring freshly created event assets.
+
 ## [1.0.0] - 2026-07-14
 
 Scale release.

@@ -126,31 +126,45 @@ namespace Kinema.MotionMatching.Editor
                 if (EditorGUI.EndChangeCheck()) _configSerialized = null;
             }
 
-            using (MotionMatchingStyles.BeginSection("Status"))
+            if (_config == null)
             {
-                if (_config == null)
+                using (MotionMatchingStyles.BeginSection("Status"))
                 {
                     MotionMatchingStyles.HelpRow("Create or assign a Motion Matching Config to begin. Right-click in the Project window → Create → Kinema → Motion Matching → Config.", MessageType.Info);
                     if (GUILayout.Button("Create Config Asset")) CreateConfigAsset();
-                    return;
                 }
+                return;
+            }
 
-                bool ready = _config.IsReadyToBake(out string reason);
-                MotionMatchingStyles.KeyValue("Config", _config.name);
-                MotionMatchingStyles.KeyValue("Clips assigned", _config.Clips.Count.ToString());
-                MotionMatchingStyles.KeyValue("Rig", _config.RigPrefab != null ? _config.RigPrefab.name : "— none —");
-                MotionMatchingStyles.KeyValue("Feature dimensions", _config.Schema.Dimension.ToString());
+            // Dashboard cards.
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                bool dbOk = _database != null && _database.IsValid;
+                MotionMatchingStyles.StatCard(dbOk ? _database.FrameCount.ToString("N0") : "—", "Frames", MotionMatchingStyles.Accent);
+                MotionMatchingStyles.StatCard(dbOk ? _database.ClipCount.ToString() : _config.Clips.Count.ToString(), "Clips", MotionMatchingStyles.Accent);
+                MotionMatchingStyles.StatCard(_config.Schema.Dimension.ToString(), "Dims / frame", MotionMatchingStyles.Accent);
+                float mb = dbOk ? _database.FrameCount * _database.Dimension * (_database.IsHalfPrecision ? 2f : 4f) / (1024f * 1024f) : 0f;
+                MotionMatchingStyles.StatCard(dbOk ? mb.ToString("F2") : "—", "MB features", MotionMatchingStyles.Accent);
+            }
 
-                EditorGUILayout.Space(2);
-                if (_database != null && _database.IsValid)
-                {
-                    MotionMatchingStyles.KeyValue("Database frames", _database.FrameCount.ToString("N0"));
-                    MotionMatchingStyles.KeyValue("Baked", _database.BakeDateUtc + " UTC");
-                }
-                else
-                {
-                    MotionMatchingStyles.HelpRow(ready ? "Config is ready. Open the Bake tab to generate the database." : reason, ready ? MessageType.Info : MessageType.Warning);
-                }
+            using (MotionMatchingStyles.BeginSection("Subsystems"))
+            {
+                bool dbOk = _database != null && _database.IsValid;
+                MotionMatchingStyles.SubsystemRow("Database", dbOk,
+                    dbOk ? $"baked {_database.BakeDateUtc} UTC @ {_database.BakeFrameRate} fps" : "not baked");
+                MotionMatchingStyles.SubsystemRow("Foot contacts", dbOk && _database.HasContacts,
+                    dbOk && _database.HasContacts ? $"{_database.ContactBoneCount} contact bone(s)" : "no contact data (rebake)");
+                MotionMatchingStyles.SubsystemRow("Tags", dbOk && _database.HasTags,
+                    dbOk && _database.HasTags ? $"{_database.TagNames.Length} tag(s) baked" : _config.TagNames.Count > 0 ? $"{_config.TagNames.Count} declared, not baked" : "none declared");
+                MotionMatchingStyles.SubsystemRow("Mirroring", dbOk && _database.HasMirroredFrames,
+                    dbOk && _database.HasMirroredFrames ? "mirrored variants baked" : _config.GenerateMirroredVariants ? "enabled, rebake needed" : "off");
+                MotionMatchingStyles.SubsystemRow("Calibration profiles", dbOk && _database.CalibrationProfiles.Length > 0,
+                    dbOk && _database.CalibrationProfiles.Length > 0 ? $"{_database.CalibrationProfiles.Length} profile(s)" : "none");
+                MotionMatchingStyles.SubsystemRow("Storage", dbOk && _database.IsHalfPrecision,
+                    dbOk && _database.IsHalfPrecision ? "16-bit half precision" : "32-bit float");
+
+                if (!_config.IsReadyToBake(out string reason))
+                    MotionMatchingStyles.HelpRow(reason, MessageType.Warning);
             }
 
             using (MotionMatchingStyles.BeginSection("Quick Actions"))
@@ -188,19 +202,18 @@ namespace Kinema.MotionMatching.Editor
                 MotionMatchingStyles.KeyValue("Baked", _database.BakeDateUtc + " UTC");
             }
 
-            using (MotionMatchingStyles.BeginSection("Clips"))
+            using (MotionMatchingStyles.BeginSection("Clips — frame share"))
             {
-                _clipScroll = EditorGUILayout.BeginScrollView(_clipScroll, GUILayout.MaxHeight(180));
+                _clipScroll = EditorGUILayout.BeginScrollView(_clipScroll, GUILayout.MaxHeight(170));
+                float total = Mathf.Max(1, _database.FrameCount);
                 for (int i = 0; i < _database.ClipCount; i++)
                 {
                     MotionClipEntry clip = _database.GetClip(i);
                     using (new EditorGUILayout.HorizontalScope())
                     {
-                        GUILayout.Label($"{i:00}", MotionMatchingStyles.KeyLabel, GUILayout.Width(24));
-                        GUILayout.Label(clip.Name, GUILayout.Width(160));
-                        GUILayout.Label($"{clip.FrameCount} f", MotionMatchingStyles.KeyLabel, GUILayout.Width(50));
-                        GUILayout.Label($"{clip.Length:F2}s", MotionMatchingStyles.KeyLabel, GUILayout.Width(50));
-                        GUILayout.FlexibleSpace();
+                        MotionMatchingStyles.ProportionBar(
+                            $"{i:00}  {clip.Name}", clip.FrameCount / total,
+                            $"{clip.FrameCount} f · {clip.Length:F2}s", MotionMatchingStyles.Accent);
                         using (new EditorGUI.DisabledScope(clip.Clip == null))
                             if (GUILayout.Button("Ping", EditorStyles.miniButton, GUILayout.Width(44)))
                                 EditorGUIUtility.PingObject(clip.Clip);
@@ -209,8 +222,65 @@ namespace Kinema.MotionMatching.Editor
                 EditorGUILayout.EndScrollView();
             }
 
+            DrawFrameInspector();
+
             using (MotionMatchingStyles.BeginSection("Feature Layout"))
                 DrawFeatureLayout(_database.Schema);
+        }
+
+        [SerializeField] private int _inspectClip;
+        [SerializeField] private int _inspectLocalFrame;
+        private Vector3[] _inspectBones;
+
+        /// <summary>
+        /// Frame inspector: scrub any baked frame and read back its denormalized data — root speed,
+        /// bone positions, contacts and tags. The fastest way to sanity-check a bake.
+        /// </summary>
+        private void DrawFrameInspector()
+        {
+            using (MotionMatchingStyles.BeginSection("Frame Inspector"))
+            {
+                var clipNames = new string[_database.ClipCount];
+                for (int i = 0; i < _database.ClipCount; i++) clipNames[i] = $"{i:00} {_database.GetClip(i).Name}";
+                _inspectClip = Mathf.Clamp(_inspectClip, 0, _database.ClipCount - 1);
+                _inspectClip = EditorGUILayout.Popup("Clip", _inspectClip, clipNames);
+
+                MotionClipEntry clip = _database.GetClip(_inspectClip);
+                _inspectLocalFrame = EditorGUILayout.IntSlider("Frame", Mathf.Clamp(_inspectLocalFrame, 0, clip.FrameCount - 1), 0, clip.FrameCount - 1);
+                int frame = clip.StartFrame + _inspectLocalFrame;
+
+                MotionFrameInfo info = _database.GetFrame(frame);
+                Vector2 rootVel = _database.GetRootVelocity(frame);
+
+                MotionMatchingStyles.KeyValue("Global frame", frame.ToString());
+                MotionMatchingStyles.KeyValue("Clip time", info.Time.ToString("F3") + " s");
+                MotionMatchingStyles.KeyValue("Root speed", rootVel.magnitude.ToString("F2") + " m/s");
+
+                if (_database.HasContacts)
+                {
+                    byte contacts = _database.GetContacts(frame);
+                    var grounded = new System.Text.StringBuilder();
+                    for (int c = 0; c < _database.ContactBoneCount; c++)
+                        if ((contacts & (1 << c)) != 0) grounded.Append(grounded.Length > 0 ? ", " : "").Append(_database.GetContactBoneName(c));
+                    MotionMatchingStyles.KeyValue("Grounded", grounded.Length > 0 ? grounded.ToString() : "airborne / none");
+                }
+
+                if (_database.HasTags)
+                {
+                    ulong tags = _database.GetFrameTags(frame);
+                    var names = new System.Text.StringBuilder();
+                    for (int t = 0; t < _database.TagNames.Length && t < 64; t++)
+                        if ((tags & (1ul << t)) != 0) names.Append(names.Length > 0 ? ", " : "").Append(_database.TagNames[t]);
+                    MotionMatchingStyles.KeyValue("Tags", names.Length > 0 ? names.ToString() : "—");
+                }
+
+                int boneCount = _database.Schema.BoneCount;
+                if (_inspectBones == null || _inspectBones.Length != boneCount) _inspectBones = new Vector3[boneCount];
+                _database.GetBonePositions(frame, _inspectBones);
+                for (int b = 0; b < boneCount; b++)
+                    MotionMatchingStyles.KeyValue(_database.Schema.BoneNames[b],
+                        $"({_inspectBones[b].x:F2}, {_inspectBones[b].y:F2}, {_inspectBones[b].z:F2})  w={_database.Schema.GetBoneWeight(b):F1}");
+            }
         }
 
         private static void DrawFeatureLayout(FeatureSchema schema)
@@ -251,6 +321,24 @@ namespace Kinema.MotionMatching.Editor
                 EditorGUILayout.PropertyField(so.FindProperty("_clips"), true);
 
             so.ApplyModifiedProperties();
+
+            using (MotionMatchingStyles.BeginSection("Pre-flight"))
+            {
+                bool hasRig = _config.RigPrefab != null;
+                int clipCount = 0; float totalLength = 0f;
+                foreach (AnimationClip c in _config.Clips)
+                    if (c != null) { clipCount++; totalLength += c.length; }
+
+                MotionMatchingStyles.SubsystemRow("Rig", hasRig, hasRig ? _config.RigPrefab.name : "assign a rig prefab");
+                MotionMatchingStyles.SubsystemRow("Clips", clipCount > 0, clipCount > 0 ? $"{clipCount} clip(s), {totalLength:F1}s of motion" : "assign locomotion clips");
+                MotionMatchingStyles.SubsystemRow("Schema", _config.Schema.Dimension > 0, $"{_config.Schema.Dimension} dims ({_config.Schema.TrajectoryPointCount} traj pts, {_config.Schema.BoneCount} bones)");
+
+                int estFrames = Mathf.CeilToInt(totalLength * _config.BakeFrameRate);
+                if (_config.GenerateMirroredVariants) estFrames *= 2;
+                float estMb = estFrames * _config.Schema.Dimension * (_config.HalfPrecision ? 2f : 4f) / (1024f * 1024f);
+                MotionMatchingStyles.KeyValue("Estimated frames", estFrames.ToString("N0") + (_config.GenerateMirroredVariants ? " (incl. mirrored)" : ""));
+                MotionMatchingStyles.KeyValue("Estimated size", estMb.ToString("F2") + " MB " + (_config.HalfPrecision ? "(16-bit)" : "(32-bit)"));
+            }
 
             using (MotionMatchingStyles.BeginSection("Bake"))
             {
@@ -382,7 +470,37 @@ namespace Kinema.MotionMatching.Editor
                 }
             }
 
+            DrawCostSparkline(_controller);
             DrawSnapshotHistory(_controller);
+        }
+
+        private float[] _sparkValues;
+        private bool[] _sparkJumps;
+
+        /// <summary>Total-cost history (newest right); orange bars mark searches that jumped clips.</summary>
+        private void DrawCostSparkline(MotionMatchingController controller)
+        {
+            SearchSnapshotRecorder recorder = controller.Snapshots;
+            if (recorder == null || recorder.Count == 0) return;
+
+            int count = Mathf.Min(recorder.Count, 120);
+            if (_sparkValues == null || _sparkValues.Length < count)
+            {
+                _sparkValues = new float[count];
+                _sparkJumps = new bool[count];
+            }
+
+            int jumps = 0;
+            for (int i = 0; i < count; i++)
+            {
+                SearchSnapshot s = recorder.GetByAge(count - 1 - i); // oldest -> newest
+                _sparkValues[i] = s.TotalCost;
+                _sparkJumps[i] = s.Jumped;
+                if (s.Jumped) jumps++;
+            }
+
+            using (MotionMatchingStyles.BeginSection($"Cost history — last {count} searches, {jumps} jumps"))
+                MotionMatchingStyles.BarSparkline(_sparkValues, _sparkJumps, count);
         }
 
         [SerializeField] private int _snapshotAge;

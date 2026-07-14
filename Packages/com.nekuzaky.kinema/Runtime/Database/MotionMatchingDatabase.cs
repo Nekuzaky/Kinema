@@ -206,6 +206,17 @@ namespace Kinema.MotionMatching
             return b >= 0 && b < _schema.BoneCount ? _schema.BoneNames[b] : null;
         }
 
+        /// <summary>Denormalized root ground-plane velocity of a baked frame (x = right, y = forward, m/s).</summary>
+        public Vector2 GetRootVelocity(int frameIndex)
+        {
+            int o = _schema.RootVelocityOffset;
+            int baseOffset = GetFeatureOffset(frameIndex);
+            float[] features = Features;
+            return new Vector2(
+                DenormalizeValue(o, features[baseOffset + o]),
+                DenormalizeValue(o + 1, features[baseOffset + o + 1]));
+        }
+
         /// <summary>Reconstructs the sampled bone local positions (character space, denormalized) of a baked frame.</summary>
         public void GetBonePositions(int frameIndex, Vector3[] buffer)
         {

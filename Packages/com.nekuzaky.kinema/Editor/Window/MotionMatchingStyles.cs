@@ -85,6 +85,69 @@ namespace Kinema.MotionMatching.Editor
 
         public static void HelpRow(string message, MessageType type) => EditorGUILayout.HelpBox(message, type);
 
+        /// <summary>Big-number stat card (dashboard style). Use inside a horizontal scope.</summary>
+        public static void StatCard(string value, string label, Color accent)
+        {
+            using (new EditorGUILayout.VerticalScope(CardBox, GUILayout.MinWidth(90)))
+            {
+                var big = new GUIStyle(EditorStyles.boldLabel) { fontSize = 20, normal = { textColor = accent } };
+                GUILayout.Label(value, big);
+                GUILayout.Label(label, KeyLabel);
+            }
+        }
+
+        /// <summary>OK / warn / off status row for a subsystem.</summary>
+        public static void SubsystemRow(string name, bool active, string detail)
+        {
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                Rect dot = GUILayoutUtility.GetRect(10, 10, GUILayout.Width(10));
+                dot.y += 4;
+                dot.height = 8; dot.width = 8;
+                EditorGUI.DrawRect(dot, active ? Ok : Muted);
+                GUILayout.Space(4);
+                GUILayout.Label(name, ValueLabel, GUILayout.Width(150));
+                GUILayout.Label(detail, KeyLabel);
+            }
+        }
+
+        /// <summary>Horizontal proportion bar (e.g. clip duration share) with a trailing label.</summary>
+        public static void ProportionBar(string label, float fraction, string trailing, Color color)
+        {
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                GUILayout.Label(label, ValueLabel, GUILayout.Width(150));
+                Rect rect = GUILayoutUtility.GetRect(60, 12, GUILayout.ExpandWidth(true));
+                rect.y += 2; rect.height = 10;
+                EditorGUI.DrawRect(rect, new Color(0f, 0f, 0f, 0.25f));
+                var fill = new Rect(rect.x, rect.y, rect.width * Mathf.Clamp01(fraction), rect.height);
+                EditorGUI.DrawRect(fill, color);
+                GUILayout.Label(trailing, KeyLabel, GUILayout.Width(96));
+            }
+        }
+
+        /// <summary>
+        /// Bar sparkline over a value series (newest right). Bars colored by <paramref name="highlight"/>
+        /// flags (e.g. matching jumps) so spikes read instantly.
+        /// </summary>
+        public static void BarSparkline(float[] values, bool[] highlight, int count, float height = 42f)
+        {
+            Rect rect = GUILayoutUtility.GetRect(120, height, GUILayout.ExpandWidth(true));
+            EditorGUI.DrawRect(rect, new Color(0f, 0f, 0f, 0.28f));
+            if (count <= 0) return;
+
+            float max = 1e-5f;
+            for (int i = 0; i < count; i++) max = Mathf.Max(max, values[i]);
+
+            float barWidth = Mathf.Max(1f, rect.width / count - 1f);
+            for (int i = 0; i < count; i++)
+            {
+                float h = Mathf.Max(1f, rect.height * (values[i] / max));
+                var bar = new Rect(rect.x + i * (rect.width / count), rect.yMax - h, barWidth, h);
+                EditorGUI.DrawRect(bar, highlight != null && highlight[i] ? TrajectoryCandidate : Accent);
+            }
+        }
+
         #endregion
 
         #region Tools and Utilities
