@@ -1,0 +1,20 @@
+{
+    "name": "Kinema.MotionMatching.Samples.Editor",
+    "rootNamespace": "Kinema.MotionMatching.Samples.Editor",
+    "references": [
+        "Kinema.MotionMatching.Runtime",
+        "Kinema.MotionMatching.Samples",
+        "Kinema.MotionMatching.Editor"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

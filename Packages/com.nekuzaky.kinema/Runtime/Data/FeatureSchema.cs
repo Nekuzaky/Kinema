@@ -1,0 +1,116 @@
+using System;
+using UnityEngine;
+
+namespace Kinema.MotionMatching
+{
+    /// <summary>
+    /// Describes the layout of a feature vector: how many trajectory points, which bones,
+    /// and where every group lives inside the flat float array. A schema is authored on the
+    /// <see cref="MotionMatchingConfig"/> and snapshotted into the <see cref="MotionMatchingDatabase"/>
+    /// at bake time, so a database always knows exactly how to interpret its own numbers even if
+    /// the config later changes.
+    ///
+    /// Layout (contiguous groups, in order):
+    ///   [ TrajectoryPosition 2*T | TrajectoryDirection 2*T | BonePosition 3*B | BoneVelocity 3*B | RootVelocity 2 ]
+    /// </summary>
+    [Serializable]
+    public sealed class FeatureSchema
+    {
+        #region Public
+
+        [Tooltip("Future time offsets (seconds) sampled for the trajectory, e.g. 0.2, 0.4, 0.6, 1.0.")]
+        public float[] TrajectoryTimes = { 0.2f, 0.4f, 0.6f, 1.0f };
+
+        [Tooltip("Transform names sampled for the pose, matched against the rig hierarchy (e.g. LeftFoot, RightFoot, Hips).")]
+        public string[] BoneNames = { "LeftFoot", "RightFoot", "Hips" };
+
+        #endregion
+
+        #region Tools and Utilities
+
+        public int TrajectoryPointCount => TrajectoryTimes?.Length ?? 0;
+        public int BoneCount => BoneNames?.Length ?? 0;
+
+        public int TrajectoryPositionOffset => 0;
+        public int TrajectoryDirectionOffset => TrajectoryPositionOffset + TrajectoryPointCount * 2;
+        public int BonePositionOffset => TrajectoryDirectionOffset + TrajectoryPointCount * 2;
+        public int BoneVelocityOffset => BonePositionOffset + BoneCount * 3;
+        public int RootVelocityOffset => BoneVelocityOffset + BoneCount * 3;
+
+        /// <summary>Total number of float dimensions in one feature vector.</summary>
+        public int Dimension => RootVelocityOffset + 2;
+
+        public int GetGroupOffset(FeatureGroup group)
+        {
+            switch (group)
+            {
+                case FeatureGroup.TrajectoryPosition: return TrajectoryPositionOffset;
+                case FeatureGroup.TrajectoryDirection: return TrajectoryDirectionOffset;
+                case FeatureGroup.BonePosition: return BonePositionOffset;
+                case FeatureGroup.BoneVelocity: return BoneVelocityOffset;
+                case FeatureGroup.RootVelocity: return RootVelocityOffset;
+                default: return 0;
+            }
+        }
+
+        public int GetGroupLength(FeatureGroup group)
+        {
+            switch (group)
+            {
+                case FeatureGroup.TrajectoryPosition: return TrajectoryPointCount * 2;
+                case FeatureGroup.TrajectoryDirection: return TrajectoryPointCount * 2;
+                case FeatureGroup.BonePosition: return BoneCount * 3;
+                case FeatureGroup.BoneVelocity: return BoneCount * 3;
+                case FeatureGroup.RootVelocity: return 2;
+                default: return 0;
+            }
+        }
+
+        /// <summary>Returns which group the given flat dimension belongs to.</summary>
+        public FeatureGroup GetGroupOf(int dimension)
+        {
+            if (dimension < TrajectoryDirectionOffset) return FeatureGroup.TrajectoryPosition;
+            if (dimension < BonePositionOffset) return FeatureGroup.TrajectoryDirection;
+            if (dimension < BoneVelocityOffset) return FeatureGroup.BonePosition;
+            if (dimension < RootVelocityOffset) return FeatureGroup.BoneVelocity;
+            return FeatureGroup.RootVelocity;
+        }
+
+        /// <summary>
+        /// Expands the per-group weights into a per-dimension weight array, ready for the inner
+        /// distance loop. Built once and cached by the matcher.
+        /// </summary>
+        public float[] BuildPerDimensionWeights(FeatureWeights weights)
+        {
+            var result = new float[Dimension];
+            for (int gi = 0; gi < FeatureGroupExtensions.Count; gi++)
+            {
+                var group = (FeatureGroup)gi;
+                int offset = GetGroupOffset(group);
+                int length = GetGroupLength(group);
+                float w = Mathf.Max(0f, weights.Get(group));
+                for (int i = 0; i < length; i++)
+                    result[offset + i] = w;
+            }
+            return result;
+        }
+
+        public FeatureSchema Clone()
+        {
+            return new FeatureSchema
+            {
+                TrajectoryTimes = (float[])(TrajectoryTimes?.Clone() ?? Array.Empty<float>()),
+                BoneNames = (string[])(BoneNames?.Clone() ?? Array.Empty<string>())
+            };
+        }
+
+        /// <summary>True when both schemas share the exact same dimension layout.</summary>
+        public bool IsLayoutCompatibleWith(FeatureSchema other)
+        {
+            if (other == null) return false;
+            return TrajectoryPointCount == other.TrajectoryPointCount && BoneCount == other.BoneCount;
+        }
+
+        #endregion
+    }
+}

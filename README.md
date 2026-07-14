@@ -1,0 +1,85 @@
+# Kinema Motion Matching
+
+[![Unity 6000.3+](https://img.shields.io/badge/Unity-6000.3%2B-black)](https://unity.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](Packages/com.nekuzaky.kinema/LICENSE.md)
+[![UPM](https://img.shields.io/badge/UPM-com.nekuzaky.kinema-informational)](Packages/com.nekuzaky.kinema)
+
+Data-driven motion matching locomotion for Unity. An offline bake pipeline turns `AnimationClip`s
+into a normalized feature database; a runtime queries it every few frames and blends to the best
+pose through a `PlayableGraph`; an integrated editor tool drives and debugs the whole loop.
+
+The toolkit is packaged as an installable UPM package
+(`com.nekuzaky.kinema`) and this repository is also a Unity project you can open to try the
+demo directly.
+
+## Features
+
+- Runtime locomotion motion matching on a manually clocked `PlayableGraph` with two-slot crossfades.
+- Clear data model: schema, trajectory samples, frames, clips, and per-group weights, all expressed
+  in a shared character-space reference frame.
+- Offline bake from `AnimationClip`s into a normalized feature database (per-dimension mean/std).
+- Configurable weighted scorer with a per-group cost breakdown.
+- Integrated editor window (Overview / Database / Bake / Debug / Settings), custom inspectors, and
+  scene-view trajectory gizmos.
+- Input-agnostic runtime via `ILocomotionProvider`; a collision-aware `CharacterMotor` keeps physics
+  out of the matcher.
+- Sample locomotion scene with a one-click setup that generates demo animations when none are supplied.
+
+## Installation
+
+Unity Package Manager, "Add package from git URL":
+
+```
+https://github.com/Nekuzaky/kinema.git?path=/Packages/com.nekuzaky.kinema
+```
+
+Requires Unity 6000.3+. The sample uses the Input System package; the runtime has no package
+dependencies.
+
+## Quick start
+
+1. Open the tool: `Kinema > Motion Matching > Window` (Ctrl+Shift+M).
+2. Create a config and assign a rig plus locomotion clips.
+3. Bake the database.
+4. Add a `MotionMatchingController` to your character and assign the database.
+
+Or import the "Locomotion Demo" sample and run `Kinema > Motion Matching > Setup Full Demo
+From FBX` for a fully wired scene.
+
+## How it works
+
+Each frame is baked into one normalized feature vector:
+
+```
+[ TrajectoryPosition 2*T | TrajectoryDirection 2*T | BonePosition 3*B | BoneVelocity 3*B | RootVelocity 2 ]
+```
+
+Matching is a weighted squared distance over these vectors. The query combines a predicted desired
+trajectory with the pose of the frame currently playing; the controller only cuts to a new frame when
+it clearly beats continuing the current clip, then crossfades. See
+[the documentation](Packages/com.nekuzaky.kinema/Documentation~/index.md) for detail.
+
+## Repository layout
+
+```
+Packages/com.nekuzaky.kinema/   The package (Runtime, Editor, Samples~, docs, license)
+Assets/                                   Unity project shell and the imported demo
+```
+
+## Roadmap
+
+The architecture is deliberately open to grow toward: pose cost breakdown (in place), mirroring,
+contextual tags and animation sections, foot/hand contacts, events, bone profiles, search
+acceleration (KD-tree / PCA), and multi-database selection.
+
+## Demo assets
+
+The demo character is provided by [Adobe Mixamo](https://www.mixamo.com/) and remains subject to
+Adobe's Mixamo license. It is included only to make the demo runnable and is not covered by this
+project's license.
+
+## License
+
+MIT. See [LICENSE](Packages/com.nekuzaky.kinema/LICENSE.md).
+
+Author: [Nekuzaky](https://github.com/Nekuzaky).
