@@ -40,7 +40,18 @@ namespace Kinema.MotionMatching
         [Tooltip("Extra cost added to candidates from a different clip. Raise to reduce clip flicker; lower for snappier switching.")]
         [SerializeField, Range(0f, 1f)] private float _clipChangeCost = 0.1f;
 
+        public enum TransitionMode
+        {
+            /// <summary>Two-slot mixer crossfade. Simple, always safe.</summary>
+            Crossfade,
+            /// <summary>Hard switch + decaying pose offset (AAA standard). Velocity-continuous transitions.</summary>
+            Inertialization
+        }
+
         [Header("Playback")]
+        [Tooltip("How jumps are smoothed. Inertialization = hard switch + decaying pose offset (AAA standard).")]
+        [SerializeField] private TransitionMode _transitionMode = TransitionMode.Inertialization;
+
         [Tooltip("Crossfade duration when jumping to a new frame.")]
         [SerializeField, Range(0f, 0.4f)] private float _blendTime = 0.15f;
 
@@ -63,6 +74,9 @@ namespace Kinema.MotionMatching
         public MotionMatchingDebugData LastDebug => _debug;
 
         public int CurrentFrame => _initialized ? MapCurrentFrame() : -1;
+
+        /// <summary>Contact bitmask of the frame currently playing (bit b = contact bone b grounded).</summary>
+        public byte CurrentContacts => _initialized ? _database.GetContacts(MapCurrentFrame()) : (byte)0;
         public int CurrentClipIndex => _initialized ? _slotClipIndex[_activeSlot] : -1;
         public float CurrentClipTime => _initialized ? (float)_slotTime[_activeSlot] : 0f;
 
@@ -96,6 +110,7 @@ namespace Kinema.MotionMatching
 
         private PlayableGraph _graph;
         private AnimationMixerPlayable _mixer;
+        private PoseInertializer _inertializer;
         private readonly AnimationClipPlayable[] _slots = new AnimationClipPlayable[SlotCount];
         private readonly int[] _slotClipIndex = new int[SlotCount];
         private readonly double[] _slotTime = new double[SlotCount];
@@ -304,6 +319,17 @@ namespace Kinema.MotionMatching
             SetSlotClip(newSlot, clip.Clip, frame.ClipIndex, frame.Time);
 
             _activeSlot = newSlot;
+
+            if (_transitionMode == TransitionMode.Inertialization)
+            {
+                // Hard switch; the inertializer carries the discontinuity as a decaying offset.
+                _blending = false;
+                _mixer.SetInputWeight(_activeSlot, 1f);
+                _mixer.SetInputWeight(1 - _activeSlot, 0f);
+                _inertializer?.RequestTransition(_blendTime);
+                return;
+            }
+
             _blending = _blendTime > 0f;
             // Resume the blend from the incoming slot's current weight to avoid a pop on interruption.
             _blend01 = _blending ? _mixer.GetInputWeight(newSlot) : 1f;
@@ -349,7 +375,19 @@ namespace Kinema.MotionMatching
 
             var output = AnimationPlayableOutput.Create(_graph, "MM Output", _animator);
             _mixer = AnimationMixerPlayable.Create(_graph, SlotCount);
-            output.SetSourcePlayable(_mixer);
+
+            if (_transitionMode == TransitionMode.Inertialization)
+            {
+                _inertializer = new PoseInertializer();
+                var node = _inertializer.Create(_graph, _animator);
+                _graph.Connect(_mixer, 0, node, 0);
+                node.SetInputWeight(0, 1f);
+                output.SetSourcePlayable(node);
+            }
+            else
+            {
+                output.SetSourcePlayable(_mixer);
+            }
 
             MotionClipEntry first = _database.GetClip(0);
             SetSlotClip(0, first.Clip, 0, 0f);
@@ -383,6 +421,10 @@ namespace Kinema.MotionMatching
         private void Teardown()
         {
             if (_graph.IsValid()) _graph.Destroy();
+            _inertializer?.Dispose();
+            _inertializer = null;
+            _matcher?.Dispose();
+            _matcher = null;
             _initialized = false;
         }
 

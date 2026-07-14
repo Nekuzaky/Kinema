@@ -294,6 +294,7 @@ namespace Kinema.MotionMatching.Samples.Editor
             if (animator == null) animator = character.AddComponent<Animator>();
 
             var controller = character.AddComponent<MotionMatchingController>();
+            character.AddComponent<FootLockIK>();
             character.AddComponent<CharacterMotor>();
             character.AddComponent<LocomotionInputProvider>();
 

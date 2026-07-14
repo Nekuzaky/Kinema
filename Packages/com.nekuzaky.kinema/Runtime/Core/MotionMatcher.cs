@@ -1,4 +1,8 @@
 using System;
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Jobs;
+using UnityEngine;
 
 namespace Kinema.MotionMatching
 {
@@ -25,18 +29,28 @@ namespace Kinema.MotionMatching
     }
 
     /// <summary>
-    /// Brute-force nearest-neighbour search over the database using a weighted, normalized
-    /// squared distance. Linear scan with an early-out is more than fast enough for a V1 (a few
-    /// thousand frames per tick); the class is intentionally shaped so a future acceleration
-    /// structure (KD-tree, PCA projection) can replace <see cref="Search"/> without touching callers.
+    /// Weighted nearest-neighbour search over the database, executed as a Burst-compiled parallel
+    /// job: the frame range is split into chunks, each worker scans its chunk with a weighted squared
+    /// distance and a branch-and-bound early-out, and the per-chunk winners are reduced on the main
+    /// thread. Features are uploaded once into a persistent <see cref="NativeArray{T}"/>.
+    /// Owns native memory: call <see cref="Dispose"/> when done.
     /// </summary>
-    public sealed class MotionMatcher
+    public sealed class MotionMatcher : IDisposable
     {
         #region Private and Protected
 
+        private const int ChunkSize = 256;
+
         private readonly MotionMatchingDatabase _database;
         private float[] _perDimensionWeights;
-        private readonly float[] _groupCostScratch = new float[FeatureGroupExtensions.Count];
+
+        private NativeArray<float> _nativeFeatures;
+        private NativeArray<float> _nativeWeights;
+        private NativeArray<float> _nativeQuery;
+        private NativeArray<float> _chunkBestCost;
+        private NativeArray<int> _chunkBestFrame;
+        private readonly int _chunkCount;
+        private bool _disposed;
 
         #endregion
 
@@ -45,6 +59,14 @@ namespace Kinema.MotionMatching
         public MotionMatcher(MotionMatchingDatabase database, FeatureWeights weights)
         {
             _database = database;
+
+            _nativeFeatures = new NativeArray<float>(database.Features, Allocator.Persistent);
+            _nativeWeights = new NativeArray<float>(database.Dimension, Allocator.Persistent);
+            _nativeQuery = new NativeArray<float>(database.Dimension, Allocator.Persistent);
+            _chunkCount = (database.FrameCount + ChunkSize - 1) / ChunkSize;
+            _chunkBestCost = new NativeArray<float>(_chunkCount, Allocator.Persistent);
+            _chunkBestFrame = new NativeArray<int>(_chunkCount, Allocator.Persistent);
+
             UpdateWeights(weights);
         }
 
@@ -58,6 +80,7 @@ namespace Kinema.MotionMatching
         public void UpdateWeights(FeatureWeights weights)
         {
             _perDimensionWeights = _database.Schema.BuildPerDimensionWeights(weights);
+            _nativeWeights.CopyFrom(_perDimensionWeights);
         }
 
         /// <summary>
@@ -66,35 +89,32 @@ namespace Kinema.MotionMatching
         /// </summary>
         public MotionMatchResult Search(MotionMatchingQuery query, int ignoreFrame = -1, int ignoreRadius = 0)
         {
-            float[] features = _database.Features;
-            float[] weights = _perDimensionWeights;
-            float[] values = query.Values;
-            int dimension = _database.Dimension;
-            int frameCount = _database.FrameCount;
+            _nativeQuery.CopyFrom(query.Values);
+
+            var job = new SearchJob
+            {
+                Features = _nativeFeatures,
+                Weights = _nativeWeights,
+                Query = _nativeQuery,
+                Dimension = _database.Dimension,
+                FrameCount = _database.FrameCount,
+                ChunkSize = ChunkSize,
+                IgnoreStart = ignoreFrame >= 0 ? ignoreFrame - ignoreRadius : -1,
+                IgnoreEnd = ignoreFrame >= 0 ? ignoreFrame + ignoreRadius : -1,
+                BestCost = _chunkBestCost,
+                BestFrame = _chunkBestFrame
+            };
+
+            job.Schedule(_chunkCount, 1).Complete();
 
             int bestFrame = -1;
             float bestCost = float.MaxValue;
-
-            for (int f = 0; f < frameCount; f++)
+            for (int c = 0; c < _chunkCount; c++)
             {
-                if (ignoreFrame >= 0 && f >= ignoreFrame - ignoreRadius && f <= ignoreFrame + ignoreRadius)
-                    continue;
-
-                int offset = f * dimension;
-                float cost = 0f;
-
-                // Weighted squared distance with branch-and-bound early-out.
-                for (int i = 0; i < dimension; i++)
+                if (_chunkBestFrame[c] >= 0 && _chunkBestCost[c] < bestCost)
                 {
-                    float d = values[i] - features[offset + i];
-                    cost += weights[i] * d * d;
-                    if (cost >= bestCost) break;
-                }
-
-                if (cost < bestCost)
-                {
-                    bestCost = cost;
-                    bestFrame = f;
+                    bestCost = _chunkBestCost[c];
+                    bestFrame = _chunkBestFrame[c];
                 }
             }
 
@@ -119,9 +139,64 @@ namespace Kinema.MotionMatching
             return cost;
         }
 
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _nativeFeatures.Dispose();
+            _nativeWeights.Dispose();
+            _nativeQuery.Dispose();
+            _chunkBestCost.Dispose();
+            _chunkBestFrame.Dispose();
+        }
+
         #endregion
 
         #region Tools and Utilities
+
+        [BurstCompile]
+        private struct SearchJob : IJobParallelFor
+        {
+            [ReadOnly] public NativeArray<float> Features;
+            [ReadOnly] public NativeArray<float> Weights;
+            [ReadOnly] public NativeArray<float> Query;
+            public int Dimension, FrameCount, ChunkSize;
+            public int IgnoreStart, IgnoreEnd;
+
+            [NativeDisableParallelForRestriction] public NativeArray<float> BestCost;
+            [NativeDisableParallelForRestriction] public NativeArray<int> BestFrame;
+
+            public void Execute(int chunk)
+            {
+                int start = chunk * ChunkSize;
+                int end = Mathf.Min(start + ChunkSize, FrameCount);
+
+                float best = float.MaxValue;
+                int bestF = -1;
+
+                for (int f = start; f < end; f++)
+                {
+                    if (f >= IgnoreStart && f <= IgnoreEnd) continue;
+
+                    int offset = f * Dimension;
+                    float cost = 0f;
+                    for (int i = 0; i < Dimension; i++)
+                    {
+                        float d = Query[i] - Features[offset + i];
+                        cost += Weights[i] * d * d;
+                        if (cost >= best) break;
+                    }
+                    if (cost < best)
+                    {
+                        best = cost;
+                        bestF = f;
+                    }
+                }
+
+                BestCost[chunk] = best;
+                BestFrame[chunk] = bestF;
+            }
+        }
 
         private MotionMatchResult BuildResult(MotionMatchingQuery query, int frameIndex, float totalCost)
         {

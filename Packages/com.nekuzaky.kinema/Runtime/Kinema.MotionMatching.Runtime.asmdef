@@ -1,7 +1,10 @@
 {
     "name": "Kinema.MotionMatching.Runtime",
     "rootNamespace": "Kinema.MotionMatching",
-    "references": [],
+    "references": [
+        "Unity.Burst",
+        "Unity.Mathematics"
+    ],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

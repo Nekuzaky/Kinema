@@ -34,13 +34,20 @@ namespace Kinema.MotionMatching.Editor
             return bones;
         }
 
+        /// <summary>Foot-contact detection thresholds (character space, rig at origin).</summary>
+        public const float ContactMaxSpeed = 0.30f;   // m/s
+        public const float ContactMaxHeight = 0.15f;  // m above ground
+
         /// <summary>
         /// Samples <paramref name="clip"/> at <paramref name="fps"/> and writes one feature row per
         /// frame into a freshly allocated array of length frameCount * schema.Dimension.
+        /// <paramref name="contactBones"/> lists schema-bone indices treated as feet;
+        /// <paramref name="contacts"/> receives one byte per frame (bit b = contact bone b grounded).
         /// </summary>
         public static float[] ExtractRawFeatures(
             GameObject rig, Transform root, Transform[] bones,
-            AnimationClip clip, FeatureSchema schema, int fps, out int frameCount)
+            AnimationClip clip, FeatureSchema schema, int fps,
+            int[] contactBones, out byte[] contacts, out int frameCount)
         {
             frameCount = Mathf.Max(1, Mathf.CeilToInt(clip.length * fps));
             int boneCount = schema.BoneCount;
@@ -77,7 +84,35 @@ namespace Kinema.MotionMatching.Editor
                 WriteRootVelocity(features, rowOffset, schema, space, rootPos, f, frameCount, dt);
             }
 
+            contacts = ExtractContacts(bonePos, boneCount, frameCount, dt, contactBones);
             return features;
+        }
+
+        /// <summary>Flags grounded feet: low world height and near-zero world speed.</summary>
+        private static byte[] ExtractContacts(Vector3[] bonePos, int boneCount, int frameCount, float dt, int[] contactBones)
+        {
+            var contacts = new byte[frameCount];
+            if (contactBones == null || contactBones.Length == 0) return contacts;
+
+            for (int f = 0; f < frameCount; f++)
+            {
+                int prev = Mathf.Max(f - 1, 0);
+                int next = Mathf.Min(f + 1, frameCount - 1);
+                float span = Mathf.Max((next - prev) * dt, 1e-5f);
+
+                byte mask = 0;
+                for (int c = 0; c < contactBones.Length && c < 8; c++)
+                {
+                    int b = contactBones[c];
+                    if (b < 0 || b >= boneCount) continue;
+                    Vector3 pos = bonePos[f * boneCount + b];
+                    float speed = (bonePos[next * boneCount + b] - bonePos[prev * boneCount + b]).magnitude / span;
+                    if (speed <= ContactMaxSpeed && pos.y <= ContactMaxHeight)
+                        mask |= (byte)(1 << c);
+                }
+                contacts[f] = mask;
+            }
+            return contacts;
         }
 
         #endregion

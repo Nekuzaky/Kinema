@@ -71,7 +71,15 @@ namespace Kinema.MotionMatching.Editor
                 foreach (string m in missing)
                     report.Warnings.Add($"Bone '{m}' not found on rig — sampled as root instead.");
 
+                // Feet = schema bones whose name contains "foot" (max 8 contact slots).
+                var contactBones = new List<int>();
+                for (int b = 0; b < schema.BoneCount && contactBones.Count < 8; b++)
+                    if (schema.BoneNames[b].ToLowerInvariant().Contains("foot"))
+                        contactBones.Add(b);
+                int[] contactBoneIndices = contactBones.ToArray();
+
                 var allFeatures = new List<float>();
+                var allContacts = new List<byte>();
                 var frames = new List<MotionFrameInfo>();
                 var clipEntries = new List<MotionClipEntry>();
                 float totalDuration = 0f;
@@ -86,9 +94,11 @@ namespace Kinema.MotionMatching.Editor
                         (c + 1f) / config.Clips.Count);
 
                     float[] raw = PoseExtractor.ExtractRawFeatures(
-                        instance, instance.transform, bones, clip, schema, fps, out int clipFrames);
+                        instance, instance.transform, bones, clip, schema, fps,
+                        contactBoneIndices, out byte[] clipContacts, out int clipFrames);
 
                     allFeatures.AddRange(raw);
+                    allContacts.AddRange(clipContacts);
                     float frameDt = 1f / fps;
                     for (int f = 0; f < clipFrames; f++)
                         frames.Add(new MotionFrameInfo(c, f * frameDt));
@@ -125,7 +135,8 @@ namespace Kinema.MotionMatching.Editor
                     schema, features, mean, std,
                     frames.ToArray(), clipEntries.ToArray(),
                     config.DefaultWeights, fps,
-                    DateTime.UtcNow.ToString("u"), totalDuration);
+                    DateTime.UtcNow.ToString("u"), totalDuration,
+                    allContacts.ToArray(), contactBoneIndices);
 
                 string path = SaveDatabase(config, database, existingDatabase != null);
 

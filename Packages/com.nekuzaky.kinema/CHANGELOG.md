@@ -4,6 +4,30 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-07-14
+
+Motion quality release.
+
+### Added
+- Inertialization transitions (`PoseInertializer`, Burst-compiled animation job): the graph
+  hard-switches clips and a per-bone pose/velocity offset decays over the blend time with a cubic
+  Hermite curve (Gears of War 4 style). New `TransitionMode` on the controller; inertialization is
+  the default, crossfade remains available.
+- Foot contacts baked into the database (per-frame bitmask; feet auto-detected from schema bone
+  names) and `FootLockIK`: analytic two-bone IK in LateUpdate that pins grounded feet, with break
+  distance and smooth release.
+- Burst/Jobs search: features live in a persistent `NativeArray` and the weighted nearest-neighbour
+  scan runs as a Burst-compiled parallel job (chunked, branch-and-bound early-out per chunk).
+  `MotionMatcher` is now `IDisposable`.
+
+### Changed
+- New package dependencies: `com.unity.burst`, `com.unity.mathematics`.
+- Databases must be rebaked to include contact data (older databases still load; foot lock disables itself).
+
+### Honest status
+- Compiles and bakes headless; inertialization and foot lock have not yet been visually playtested.
+  Both can be disabled per component if something looks off (`TransitionMode.Crossfade`, FootLockIK weight 0).
+
 ## [0.2.0] - 2026-07-14
 
 Matching quality and tooling pass, informed by JLPM22/MxM-style systems.

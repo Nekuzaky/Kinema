@@ -28,6 +28,10 @@ namespace Kinema.MotionMatching
         [SerializeField] private MotionFrameInfo[] _frames = Array.Empty<MotionFrameInfo>();
         [SerializeField] private MotionClipEntry[] _clips = Array.Empty<MotionClipEntry>();
 
+        // Foot contacts: one byte per frame, bit b = contact bone b grounded.
+        [SerializeField] private byte[] _contacts = Array.Empty<byte>();
+        [SerializeField] private int[] _contactBoneIndices = Array.Empty<int>();
+
         [Header("Bake Metadata")]
         [SerializeField] private FeatureWeights _defaultWeights = FeatureWeights.Default;
         [SerializeField] private int _bakeFrameRate;
@@ -49,6 +53,11 @@ namespace Kinema.MotionMatching
         public float TotalDurationSeconds => _totalDurationSeconds;
 
         public bool IsValid => _frameCount > 0 && _dimension > 0 && _features.Length == _frameCount * _dimension;
+
+        /// <summary>Schema-bone indices flagged as feet at bake time (max 8).</summary>
+        public int[] ContactBoneIndices => _contactBoneIndices;
+        public int ContactBoneCount => _contactBoneIndices?.Length ?? 0;
+        public bool HasContacts => _contacts != null && _contacts.Length == _frameCount && ContactBoneCount > 0;
 
         #endregion
 
@@ -112,6 +121,20 @@ namespace Kinema.MotionMatching
             }
         }
 
+        /// <summary>Contact bitmask of a frame: bit b set = contact bone b grounded.</summary>
+        public byte GetContacts(int frameIndex)
+        {
+            return HasContacts ? _contacts[frameIndex] : (byte)0;
+        }
+
+        /// <summary>Name of the schema bone behind contact slot <paramref name="contactSlot"/>.</summary>
+        public string GetContactBoneName(int contactSlot)
+        {
+            if (contactSlot < 0 || contactSlot >= ContactBoneCount) return null;
+            int b = _contactBoneIndices[contactSlot];
+            return b >= 0 && b < _schema.BoneCount ? _schema.BoneNames[b] : null;
+        }
+
         /// <summary>Reconstructs the sampled bone local positions (character space, denormalized) of a baked frame.</summary>
         public void GetBonePositions(int frameIndex, Vector3[] buffer)
         {
@@ -146,8 +169,12 @@ namespace Kinema.MotionMatching
             FeatureWeights defaultWeights,
             int bakeFrameRate,
             string bakeDateUtc,
-            float totalDuration)
+            float totalDuration,
+            byte[] contacts = null,
+            int[] contactBoneIndices = null)
         {
+            _contacts = contacts ?? Array.Empty<byte>();
+            _contactBoneIndices = contactBoneIndices ?? Array.Empty<int>();
             _schema = schema;
             _dimension = schema.Dimension;
             _frameCount = frames.Length;
