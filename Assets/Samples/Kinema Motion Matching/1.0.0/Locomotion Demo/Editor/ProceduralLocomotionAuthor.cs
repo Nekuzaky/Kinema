@@ -81,6 +81,109 @@ namespace Kinema.MotionMatching.Samples.Editor
             }
         }
 
+        /// <summary>
+        /// Generates the one-shot vault clip used by the demo's motion event: the root rises in an
+        /// arc over ~1.1 m while travelling 2.2 m forward, both legs tuck at the apex, the arms swing
+        /// forward to plant on the edge and the torso folds. Non-looping; played through
+        /// <see cref="MotionEventDefinition"/> with warping, never part of the matching database.
+        /// </summary>
+        public static AnimationClip GenerateVault(GameObject rigPrefab, string outputFolder)
+        {
+            GameObject instance = Object.Instantiate(rigPrefab);
+            try
+            {
+                Transform root = instance.transform;
+                var bones = new Dictionary<string, BoneRef>();
+                foreach (string key in new[] { "LeftUpLeg", "LeftLeg", "LeftFoot", "RightUpLeg", "RightLeg", "RightFoot",
+                                               "LeftArm", "LeftForeArm", "RightArm", "RightForeArm", "Hips", "Spine" })
+                    bones[key] = FindBone(root, key);
+
+                const float length = 0.9f;
+                const float travel = 2.2f;   // total forward root motion
+                const float apex = 1.1f;     // peak root height over the obstacle
+                int frames = Mathf.RoundToInt(length * Fps);
+                float dt = 1f / Fps;
+
+                var posX = new AnimationCurve(); var posY = new AnimationCurve(); var posZ = new AnimationCurve();
+                var rootRot = new QuatCurves();
+                var upLegL = new QuatCurves(); var legL = new QuatCurves(); var footL = new QuatCurves();
+                var upLegR = new QuatCurves(); var legR = new QuatCurves(); var footR = new QuatCurves();
+                var armL = new QuatCurves(); var foreArmL = new QuatCurves();
+                var armR = new QuatCurves(); var foreArmR = new QuatCurves();
+                var spineRot = new QuatCurves();
+
+                for (int f = 0; f <= frames; f++)
+                {
+                    float u = frames > 0 ? (float)f / frames : 0f;
+                    float t = f * dt;
+
+                    posX.AddKey(t, 0f);
+                    posZ.AddKey(t, travel * u);
+                    // Airborne arc between 15% and 85% of the clip.
+                    float a = Mathf.Clamp01((u - 0.15f) / 0.7f);
+                    posY.AddKey(t, apex * Mathf.Sin(Mathf.PI * a));
+                    rootRot.Add(t, Quaternion.identity);
+
+                    // Both legs tuck hard at the apex.
+                    float tuck = Bell(u, 0.5f, 0.22f);
+                    AddLegChain(upLegL, legL, footL, bones["LeftUpLeg"], bones["LeftLeg"], bones["LeftFoot"],
+                        -55f * tuck, -95f * tuck, t);
+                    AddLegChain(upLegR, legR, footR, bones["RightUpLeg"], bones["RightLeg"], bones["RightFoot"],
+                        -65f * tuck, -100f * tuck, t);
+
+                    // Arms swing forward-down to plant on the edge just before the apex.
+                    float plant = Bell(u, 0.35f, 0.18f);
+                    AddArmChain(armL, foreArmL, bones["LeftArm"], bones["LeftForeArm"], 45f * plant, t);
+                    AddArmChain(armR, foreArmR, bones["RightArm"], bones["RightForeArm"], 50f * plant, t);
+
+                    // Torso folds over the obstacle.
+                    if (bones["Spine"].Valid)
+                    {
+                        Quaternion spineWorld = Quaternion.AngleAxis(28f * Bell(u, 0.45f, 0.28f), Vector3.right) * bones["Spine"].RestWorld;
+                        spineRot.Add(t, Quaternion.Inverse(bones["Spine"].ParentRestWorld) * spineWorld);
+                    }
+                }
+
+                var clip = new AnimationClip { frameRate = Fps };
+                SetCurve(clip, "", "m_LocalPosition.x", posX);
+                SetCurve(clip, "", "m_LocalPosition.y", posY);
+                SetCurve(clip, "", "m_LocalPosition.z", posZ);
+                rootRot.Apply(clip, "");
+                upLegL.Apply(clip, bones["LeftUpLeg"].Path); legL.Apply(clip, bones["LeftLeg"].Path); footL.Apply(clip, bones["LeftFoot"].Path);
+                upLegR.Apply(clip, bones["RightUpLeg"].Path); legR.Apply(clip, bones["RightLeg"].Path); footR.Apply(clip, bones["RightFoot"].Path);
+                armL.Apply(clip, bones["LeftArm"].Path); foreArmL.Apply(clip, bones["LeftForeArm"].Path);
+                armR.Apply(clip, bones["RightArm"].Path); foreArmR.Apply(clip, bones["RightForeArm"].Path);
+                if (bones["Spine"].Valid) spineRot.Apply(clip, bones["Spine"].Path);
+
+                clip.EnsureQuaternionContinuity();
+                AnimationClipSettings settings = AnimationUtility.GetAnimationClipSettings(clip);
+                settings.loopTime = false;
+                AnimationUtility.SetAnimationClipSettings(clip, settings);
+
+                string path = $"{outputFolder}/Event_Vault.anim";
+                var existing = AssetDatabase.LoadAssetAtPath<AnimationClip>(path);
+                if (existing != null)
+                {
+                    EditorUtility.CopySerialized(clip, existing);
+                    AssetDatabase.SaveAssets();
+                    return existing;
+                }
+                AssetDatabase.CreateAsset(clip, path);
+                AssetDatabase.SaveAssets();
+                return clip;
+            }
+            finally
+            {
+                Object.DestroyImmediate(instance);
+            }
+        }
+
+        private static float Bell(float u, float center, float width)
+        {
+            float d = (u - center) / width;
+            return Mathf.Exp(-d * d);
+        }
+
         #endregion
 
         #region Tools and Utilities

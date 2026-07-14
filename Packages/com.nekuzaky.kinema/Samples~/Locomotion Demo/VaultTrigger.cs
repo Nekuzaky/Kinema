@@ -1,0 +1,112 @@
+using Kinema.MotionMatching;
+using UnityEngine;
+using UnityEngine.InputSystem;
+
+namespace Kinema.MotionMatching.Samples
+{
+    /// <summary>
+    /// Demo vault trigger, MxM-style event workflow: a chest-height ray probes ahead for a low
+    /// obstacle; when one is in range and the player presses jump, the controller plays the vault
+    /// motion event with its contact warped onto the obstacle's near edge. Matching pauses for the
+    /// clip and resumes on landing; the inertializer absorbs both seams.
+    /// </summary>
+    [AddComponentMenu("Kinema/Motion Matching/Samples/Vault Trigger")]
+    [RequireComponent(typeof(MotionMatchingController))]
+    public sealed class VaultTrigger : MonoBehaviour
+    {
+        #region Public
+
+        [Tooltip("The vault motion event (clip + contact time + warp settings).")]
+        [SerializeField] private MotionEventDefinition _vaultEvent;
+
+        [Tooltip("How far ahead an obstacle can be triggered (meters).")]
+        [SerializeField, Range(0.5f, 3f)] private float _maxDistance = 1.4f;
+
+        [Tooltip("Obstacle top must be at least this high above the feet to vault (meters).")]
+        [SerializeField, Range(0.1f, 1f)] private float _minObstacleHeight = 0.35f;
+
+        [Tooltip("Obstacle top must be below this height to vault (meters).")]
+        [SerializeField, Range(0.5f, 2f)] private float _maxObstacleHeight = 1.15f;
+
+        /// <summary>True while an eligible obstacle is ahead (drive a UI prompt from this).</summary>
+        public bool CanVault { get; private set; }
+
+        #endregion
+
+        #region Private and Protected
+
+        private MotionMatchingController _controller;
+        private InputAction _vaultAction;
+
+        #endregion
+
+        #region Unity API
+
+        private void Awake()
+        {
+            _controller = GetComponent<MotionMatchingController>();
+
+            _vaultAction = new InputAction("Vault", InputActionType.Button);
+            _vaultAction.AddBinding("<Keyboard>/space");
+            _vaultAction.AddBinding("<Gamepad>/buttonSouth");
+        }
+
+        private void OnEnable() => _vaultAction.Enable();
+        private void OnDisable() => _vaultAction.Disable();
+
+        private void Update()
+        {
+            CanVault = false;
+            if (_vaultEvent == null || !_controller.IsInitialized || _controller.IsPlayingEvent) return;
+
+            if (!ProbeObstacle(out RaycastHit hit)) return;
+            CanVault = true;
+
+            if (_vaultAction.WasPressedThisFrame())
+                Vault(hit);
+        }
+
+        private void OnDrawGizmosSelected()
+        {
+            Gizmos.color = CanVault ? Color.green : Color.gray;
+            Vector3 origin = transform.position + Vector3.up * 0.6f;
+            Gizmos.DrawLine(origin, origin + Flatten(transform.forward) * _maxDistance);
+        }
+
+        #endregion
+
+        #region Tools and Utilities
+
+        /// <summary>Chest-height ray; eligible when the hit collider's top edge sits in the vault window.</summary>
+        private bool ProbeObstacle(out RaycastHit hit)
+        {
+            Vector3 origin = transform.position + Vector3.up * 0.6f;
+            Vector3 forward = Flatten(transform.forward);
+
+            if (!Physics.Raycast(origin, forward, out hit, _maxDistance)) return false;
+            if (hit.collider.isTrigger || hit.collider.transform.IsChildOf(transform)) return false;
+
+            float top = hit.collider.bounds.max.y - transform.position.y;
+            return top >= _minObstacleHeight && top <= _maxObstacleHeight;
+        }
+
+        private void Vault(RaycastHit hit)
+        {
+            Vector3 forward = Flatten(transform.forward);
+
+            // Contact lands just past the near edge; height comes from the clip's root arc.
+            Vector3 contact = hit.point + forward * 0.25f;
+            contact.y = transform.position.y;
+
+            _controller.PlayEvent(_vaultEvent, contact, Quaternion.LookRotation(forward, Vector3.up));
+        }
+
+        private static Vector3 Flatten(Vector3 v)
+        {
+            v.y = 0f;
+            return v.sqrMagnitude > 1e-6f ? v.normalized : Vector3.forward;
+        }
+
+        #endregion
+    }
+}

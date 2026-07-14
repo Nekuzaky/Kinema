@@ -126,6 +126,15 @@ namespace Kinema.MotionMatching.Samples.Editor
             string[] boneNames = ResolveBoneNames(rig);
             Debug.Log($"[Kinema] Bones: [{string.Join(", ", boneNames)}]");
 
+            // Vault motion event: procedural clip + event asset (Generic rig only; the demo default).
+            MotionEventDefinition vaultEvent = null;
+            if (realClips.Length == 0)
+            {
+                AnimationClip vaultClip = ProceduralLocomotionAuthor.GenerateVault(rig, EnsureGeneratedFolder());
+                vaultEvent = CreateOrUpdateVaultEvent(vaultClip);
+                Debug.Log("[Kinema] Vault event ready (Space / gamepad South near a low obstacle).");
+            }
+
             MotionMatchingConfig config = CreateOrLoadConfig();
             ConfigureAsset(config, rig, clips, boneNames);
 
@@ -146,7 +155,30 @@ namespace Kinema.MotionMatching.Samples.Editor
                 }
             }
 
-            BuildScene(rig, database);
+            BuildScene(rig, database, vaultEvent);
+        }
+
+        /// <summary>The vault event asset: clip, contact at the hands-plant moment, horizontal warp only.</summary>
+        private static MotionEventDefinition CreateOrUpdateVaultEvent(AnimationClip vaultClip)
+        {
+            string path = DemoPaths.SampleRoot + "/VaultEvent.asset";
+            var def = AssetDatabase.LoadAssetAtPath<MotionEventDefinition>(path);
+            if (def == null)
+            {
+                def = ScriptableObject.CreateInstance<MotionEventDefinition>();
+                AssetDatabase.CreateAsset(def, path);
+            }
+
+            var so = new SerializedObject(def);
+            so.FindProperty("_clip").objectReferenceValue = vaultClip;
+            so.FindProperty("_contactTime").floatValue = 0.35f; // hands plant on the edge
+            so.FindProperty("_blendIn").floatValue = 0.12f;
+            so.FindProperty("_warpPosition").boolValue = true;
+            so.FindProperty("_warpRotation").boolValue = true;
+            so.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(def);
+            AssetDatabase.SaveAssets();
+            return def;
         }
 
         /// <summary>Forces a model to import as Humanoid (idempotent). Returns false if it isn't a model.</summary>
@@ -271,7 +303,7 @@ namespace Kinema.MotionMatching.Samples.Editor
             AssetDatabase.SaveAssets();
         }
 
-        private static void BuildScene(GameObject rig, MotionMatchingDatabase database)
+        private static void BuildScene(GameObject rig, MotionMatchingDatabase database, MotionEventDefinition vaultEvent = null)
         {
             DemoSceneBuilder.EnsureFolders();
             DemoSceneBuilder.NewDemoScene();
@@ -297,6 +329,15 @@ namespace Kinema.MotionMatching.Samples.Editor
             character.AddComponent<FootLockIK>();
             character.AddComponent<CharacterMotor>();
             character.AddComponent<LocomotionInputProvider>();
+
+            // The bake's AssetDatabase.Refresh reimports freshly created assets and kills their
+            // in-memory instances (Unity fake-null), so the disk is the source of truth here.
+            var vaultRef = AssetDatabase.LoadAssetAtPath<MotionEventDefinition>(DemoPaths.SampleRoot + "/VaultEvent.asset");
+            if (vaultRef != null)
+            {
+                var vault = character.AddComponent<VaultTrigger>();
+                DemoSceneBuilder.SetObjectReference(vault, "_vaultEvent", vaultRef);
+            }
 
             // Reload from disk so the reference is a persisted asset (guid-resolvable) at save time.
             MotionMatchingDatabase dbRef = AssetDatabase.LoadAssetAtPath<MotionMatchingDatabase>(DatabasePath) ?? database;

@@ -33,6 +33,7 @@ namespace Kinema.MotionMatching.Samples
 
         private CharacterController _controller;
         private Animator _animator;
+        private MotionMatchingController _matching;
         private float _verticalVelocity;
 
         #endregion
@@ -43,6 +44,7 @@ namespace Kinema.MotionMatching.Samples
         {
             _controller = GetComponent<CharacterController>();
             _animator = GetComponent<Animator>();
+            _matching = GetComponent<MotionMatchingController>();
             _animator.applyRootMotion = true; // We consume it ourselves in OnAnimatorMove.
         }
 
@@ -55,12 +57,21 @@ namespace Kinema.MotionMatching.Samples
 
             Vector3 delta = _animator.deltaPosition;
 
-            if (_controller.isGrounded && _verticalVelocity <= 0f)
-                _verticalVelocity = -_groundStick;
+            if (_matching != null && _matching.IsPlayingEvent)
+            {
+                // Events (vault, climb) author their own vertical arc: trust the clip, not gravity.
+                _verticalVelocity = 0f;
+            }
             else
-                _verticalVelocity -= _gravity * dt;
+            {
+                if (_controller.isGrounded && _verticalVelocity <= 0f)
+                    _verticalVelocity = -_groundStick;
+                else
+                    _verticalVelocity -= _gravity * dt;
 
-            delta.y = _verticalVelocity * dt;
+                delta.y = _verticalVelocity * dt;
+            }
+
             _controller.Move(delta);
 
             transform.rotation *= _animator.deltaRotation;
