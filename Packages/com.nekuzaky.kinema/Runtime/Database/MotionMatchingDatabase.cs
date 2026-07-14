@@ -64,6 +64,19 @@ namespace Kinema.MotionMatching
         public bool HasContacts => _contacts != null && _contacts.Length == _frameCount && ContactBoneCount > 0;
 
         public bool HasTags => _frameTags != null && _frameTags.Length == _frameCount && _tagNames.Length > 0;
+
+        [SerializeField] private bool _hasMirroredFrames;
+
+        /// <summary>True when the second half of the frame range holds mirrored variants.</summary>
+        public bool HasMirroredFrames => _hasMirroredFrames;
+
+        /// <summary>Maps an original frame to its mirrored twin (or back). Identity when unmirrored.</summary>
+        public int GetMirroredTwin(int frameIndex)
+        {
+            if (!_hasMirroredFrames) return frameIndex;
+            int half = _frameCount / 2;
+            return frameIndex < half ? frameIndex + half : frameIndex - half;
+        }
         public string[] TagNames => _tagNames;
         public ulong[] FrameTags => _frameTags;
 
@@ -201,6 +214,9 @@ namespace Kinema.MotionMatching
             _contactBoneIndices = contactBoneIndices ?? Array.Empty<int>();
             _frameTags = frameTags ?? Array.Empty<ulong>();
             _tagNames = tagNames ?? Array.Empty<string>();
+            _hasMirroredFrames = false;
+            for (int i = 0; i < frames.Length; i++)
+                if (frames[i].IsMirrored) { _hasMirroredFrames = true; break; }
             _schema = schema;
             _dimension = schema.Dimension;
             _frameCount = frames.Length;

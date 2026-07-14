@@ -95,6 +95,12 @@ namespace Kinema.MotionMatching
             ulong mask = _database.GetTagMask(tagName);
             if (required) RequiredTags |= mask; else RequiredTags &= ~mask;
         }
+
+        /// <summary>True while a triggered event clip is playing (matching suspended).</summary>
+        public bool IsPlayingEvent => _activeEvent != null;
+
+        /// <summary>Ring buffer of the last matching decisions, for the snapshot debugger.</summary>
+        public SearchSnapshotRecorder Snapshots => _snapshots;
         public int CurrentClipIndex => _initialized ? _slotClipIndex[_activeSlot] : -1;
         public float CurrentClipTime => _initialized ? (float)_slotTime[_activeSlot] : 0f;
 
@@ -128,7 +134,20 @@ namespace Kinema.MotionMatching
 
         private PlayableGraph _graph;
         private AnimationMixerPlayable _mixer;
+        private AnimationLayerMixerPlayable _layerMixer;
+        private AnimationClipPlayable _overlayPlayable;
+        private float _overlayWeight, _overlayTarget, _overlayFade;
         private PoseInertializer _inertializer;
+        private MirrorPose _mirror;
+        private bool _playingMirrored;
+
+        // Event playback state (matching suspended while active).
+        private MotionEventDefinition _activeEvent;
+        private Vector3 _eventTargetPosition;
+        private Quaternion _eventTargetRotation;
+        private float _eventClipLength;
+
+        private SearchSnapshotRecorder _snapshots;
         private readonly AnimationClipPlayable[] _slots = new AnimationClipPlayable[SlotCount];
         private readonly int[] _slotClipIndex = new int[SlotCount];
         private readonly double[] _slotTime = new double[SlotCount];
@@ -216,6 +235,7 @@ namespace Kinema.MotionMatching
             _currentBones = new Vector3[boneCount];
             _candidateBones = new Vector3[boneCount];
             _history = new TrajectoryHistory(128);
+            _snapshots = new SearchSnapshotRecorder(240, FeatureGroupExtensions.Count, _database.Schema.TrajectoryPointCount);
             _debug.DesiredTrajectory = _desiredTrajectory;
             _debug.CandidateTrajectory = _candidateTrajectory;
             _debug.Clear();
@@ -231,6 +251,62 @@ namespace Kinema.MotionMatching
         public void ResetWeightsToDatabaseDefault()
         {
             if (_database != null) Weights = _database.DefaultWeights;
+        }
+
+        /// <summary>
+        /// Plays a triggered action clip, warping the root so the event's contact moment lands on
+        /// the given target. Matching is suspended until the clip finishes, then resumes with an
+        /// immediate search (the inertializer absorbs the seam).
+        /// </summary>
+        public bool PlayEvent(MotionEventDefinition definition, Vector3 targetPosition, Quaternion targetRotation)
+        {
+            if (!_initialized || definition == null || !definition.IsValid) return false;
+
+            _activeEvent = definition;
+            _eventTargetPosition = targetPosition;
+            _eventTargetRotation = targetRotation;
+            _eventClipLength = definition.Clip.length;
+
+            int newSlot = 1 - _activeSlot;
+            SetSlotClip(newSlot, definition.Clip, -1, 0f); // -1: external clip, not a database index.
+            _activeSlot = newSlot;
+            _blending = false;
+            _mixer.SetInputWeight(_activeSlot, 1f);
+            _mixer.SetInputWeight(1 - _activeSlot, 0f);
+            _inertializer?.RequestTransition(definition.BlendIn);
+            _mirror?.SetMirrored(false);
+            _playingMirrored = false;
+            return true;
+        }
+
+        /// <summary>
+        /// Plays an overlay clip on a separate layer (upper body via avatar mask, for example)
+        /// while matching keeps driving the base layer.
+        /// </summary>
+        public void PlayOverlay(AnimationClip clip, AvatarMask mask, float weight = 1f, float fadeTime = 0.15f)
+        {
+            if (!_initialized || clip == null || !_layerMixer.IsValid()) return;
+
+            if (_overlayPlayable.IsValid())
+            {
+                _graph.Disconnect(_layerMixer, 1);
+                _graph.DestroyPlayable(_overlayPlayable);
+            }
+
+            _overlayPlayable = AnimationClipPlayable.Create(_graph, clip);
+            _overlayPlayable.SetApplyFootIK(false);
+            _graph.Connect(_overlayPlayable, 0, _layerMixer, 1);
+            if (mask != null) _layerMixer.SetLayerMaskFromAvatarMask(1, mask);
+
+            _overlayTarget = Mathf.Clamp01(weight);
+            _overlayFade = Mathf.Max(0.01f, fadeTime);
+        }
+
+        /// <summary>Fades the overlay layer out.</summary>
+        public void StopOverlay(float fadeTime = 0.15f)
+        {
+            _overlayTarget = 0f;
+            _overlayFade = Mathf.Max(0.01f, fadeTime);
         }
 
         public void SetLocomotionProvider(ILocomotionProvider provider)
@@ -252,16 +328,67 @@ namespace Kinema.MotionMatching
 
             AdvanceClocks(dt);
 
-            _searchTimer -= dt;
-            if (_searchTimer <= 0f)
+            if (_activeEvent != null)
             {
-                _searchTimer += _searchInterval;
-                RunSearch();
+                TickEvent(dt);
+            }
+            else
+            {
+                _searchTimer -= dt;
+                if (_searchTimer <= 0f)
+                {
+                    _searchTimer += _searchInterval;
+                    RunSearch();
+                }
             }
 
             UpdateBlend(dt);
+            UpdateOverlay(dt);
             ApplySlotTimes();
             _graph.Evaluate(dt);
+        }
+
+        /// <summary>Warps the root toward the event target until contact, then ends the event at clip end.</summary>
+        private void TickEvent(float dt)
+        {
+            float time = (float)_slotTime[_activeSlot];
+            float remainingToContact = _activeEvent.ContactTime - time;
+
+            if (remainingToContact > dt)
+            {
+                float step = dt / remainingToContact;
+                if (_activeEvent.WarpPosition)
+                {
+                    Vector3 error = _eventTargetPosition - transform.position;
+                    error.y = 0f;
+                    transform.position += error * step;
+                }
+                if (_activeEvent.WarpRotation)
+                {
+                    transform.rotation = Quaternion.Slerp(transform.rotation, _eventTargetRotation, step);
+                }
+            }
+
+            if (time >= _eventClipLength - 1e-3f)
+            {
+                _activeEvent = null;
+                _searchTimer = 0f; // resume matching immediately; inertialization absorbs the seam.
+            }
+        }
+
+        private void UpdateOverlay(float dt)
+        {
+            if (!_layerMixer.IsValid()) return;
+            _overlayWeight = Mathf.MoveTowards(_overlayWeight, _overlayTarget, dt / _overlayFade);
+            _layerMixer.SetInputWeight(1, _overlayWeight);
+
+            // One-shot overlays fade out on their own once the clip ends.
+            if (_overlayPlayable.IsValid() && _overlayTarget > 0f)
+            {
+                AnimationClip clip = _overlayPlayable.GetAnimationClip();
+                if (clip != null && !clip.isLooping && _overlayPlayable.GetTime() >= clip.length)
+                    _overlayTarget = 0f;
+            }
         }
 
         private void AdvanceClocks(float dt)
@@ -275,7 +402,7 @@ namespace Kinema.MotionMatching
                 _slotTime[other] = WrapTime(_slotClipIndex[other], _slotTime[other] + step);
             }
 
-            if (_relayAnimationEvents && step > 0f)
+            if (_relayAnimationEvents && step > 0f && _slotClipIndex[_activeSlot] >= 0)
                 RelayAnimationEvents(_slotClipIndex[_activeSlot], (float)before, (float)_slotTime[_activeSlot]);
         }
 
@@ -369,6 +496,9 @@ namespace Kinema.MotionMatching
             MotionFrameInfo frame = _database.GetFrame(frameIndex);
             MotionClipEntry clip = _database.GetClip(frame.ClipIndex);
 
+            _playingMirrored = frame.IsMirrored;
+            _mirror?.SetMirrored(_playingMirrored);
+
             int newSlot = 1 - _activeSlot;
             SetSlotClip(newSlot, clip.Clip, frame.ClipIndex, frame.Time);
 
@@ -430,18 +560,32 @@ namespace Kinema.MotionMatching
             var output = AnimationPlayableOutput.Create(_graph, "MM Output", _animator);
             _mixer = AnimationMixerPlayable.Create(_graph, SlotCount);
 
+            // Chain: mixer -> [mirror] -> [inertializer] -> layerMixer -> output.
+            Playable head = _mixer;
+
+            if (_database.HasMirroredFrames)
+            {
+                _mirror = new MirrorPose();
+                var mirrorNode = _mirror.Create(_graph, _animator);
+                _graph.Connect(head, 0, mirrorNode, 0);
+                mirrorNode.SetInputWeight(0, 1f);
+                head = mirrorNode;
+            }
+
             if (_transitionMode == TransitionMode.Inertialization)
             {
                 _inertializer = new PoseInertializer();
                 var node = _inertializer.Create(_graph, _animator);
-                _graph.Connect(_mixer, 0, node, 0);
+                _graph.Connect(head, 0, node, 0);
                 node.SetInputWeight(0, 1f);
-                output.SetSourcePlayable(node);
+                head = node;
             }
-            else
-            {
-                output.SetSourcePlayable(_mixer);
-            }
+
+            _layerMixer = AnimationLayerMixerPlayable.Create(_graph, 2);
+            _graph.Connect(head, 0, _layerMixer, 0);
+            _layerMixer.SetInputWeight(0, 1f);
+            _layerMixer.SetInputWeight(1, 0f);
+            output.SetSourcePlayable(_layerMixer);
 
             MotionClipEntry first = _database.GetClip(0);
             SetSlotClip(0, first.Clip, 0, 0f);
@@ -477,13 +621,21 @@ namespace Kinema.MotionMatching
             if (_graph.IsValid()) _graph.Destroy();
             _inertializer?.Dispose();
             _inertializer = null;
+            _mirror?.Dispose();
+            _mirror = null;
             _matcher?.Dispose();
             _matcher = null;
+            _activeEvent = null;
+            _playingMirrored = false;
             _initialized = false;
         }
 
         private double WrapTime(int clipIndex, double time)
         {
+            // External event clip: clamp, never wrap.
+            if (clipIndex < 0)
+                return System.Math.Min(time, _eventClipLength);
+
             float length = _database.GetClip(clipIndex).Length;
             if (length <= 0f) return 0d;
             if (time >= length) time -= length * System.Math.Floor(time / length);
@@ -493,7 +645,11 @@ namespace Kinema.MotionMatching
 
         private int MapCurrentFrame()
         {
-            return _database.MapClipTimeToFrame(_slotClipIndex[_activeSlot], (float)_slotTime[_activeSlot]);
+            int clipIndex = _slotClipIndex[_activeSlot];
+            if (clipIndex < 0) return _lastCurrentFrame >= 0 ? _lastCurrentFrame : 0; // event clip: keep last known.
+
+            int frame = _database.MapClipTimeToFrame(clipIndex, (float)_slotTime[_activeSlot]);
+            return _playingMirrored ? _database.GetMirroredTwin(frame) : frame;
         }
 
         /// <summary>The frame one search-interval ahead in the current clip, or -1 if it runs off the end.</summary>
@@ -504,7 +660,8 @@ namespace Kinema.MotionMatching
 
             float aheadTime = (float)_slotTime[_activeSlot] + _searchInterval * _playbackSpeed;
             if (aheadTime >= clip.Length) return -1;
-            return _database.MapClipTimeToFrame(_slotClipIndex[_activeSlot], aheadTime);
+            int frame = _database.MapClipTimeToFrame(_slotClipIndex[_activeSlot], aheadTime);
+            return _playingMirrored ? _database.GetMirroredTwin(frame) : frame;
         }
 
         private void UpdateDebug(MotionMatchResult result, float continuationCost, bool jumped)
@@ -530,6 +687,11 @@ namespace Kinema.MotionMatching
             _database.GetTrajectory(result.FrameIndex, _candidateTrajectory);
             _database.GetBonePositions(result.FrameIndex, _candidateBones);
             if (_lastCurrentFrame >= 0) _database.GetBonePositions(_lastCurrentFrame, _currentBones);
+
+            _snapshots?.Record(
+                Time.time, result.FrameIndex, frame.ClipIndex, frame.Time,
+                result.TotalCost, _debug.ContinuationCost, jumped,
+                result.GroupCosts, _desiredTrajectory, _candidateTrajectory);
         }
 
         private void DrawDebugGizmos()

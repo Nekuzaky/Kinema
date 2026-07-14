@@ -4,6 +4,28 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-07-14
+
+Actions release.
+
+### Added
+- Motion events (`MotionEventDefinition` asset + `controller.PlayEvent`): triggered action clips
+  (vault, interaction) played outside the matching loop, with root warping so the clip's contact
+  moment lands exactly on the requested position/rotation. Matching resumes with an immediate
+  search when the clip ends; the inertializer absorbs both seams.
+- Overlay layers: an `AnimationLayerMixerPlayable` above the matching chain.
+  `PlayOverlay(clip, avatarMask, weight, fade)` / `StopOverlay()` for upper-body actions while
+  locomotion keeps matching; one-shot overlays fade out on their own.
+- Mirroring (experimental, opt-in on the config): every frame baked as a mirrored variant
+  (trajectory/root X-flip, Left/Right bone slots swapped, contacts bit-swapped) and played through a
+  runtime mirror pose job (name-paired Left/Right transforms, X-plane reflection). Doubles coverage
+  without new mocap. Requires a symmetric rig; off by default.
+- Snapshot debugger: the last 240 matching decisions recorded in a preallocated ring buffer
+  (costs, breakdown, trajectories) with a scrubber in the Debug tab.
+
+### Honest status
+- Mirroring is baked-and-wired but unvalidated visually; keep it off until playtested.
+
 ## [0.4.0] - 2026-07-14
 
 Control release.

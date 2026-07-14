@@ -129,6 +129,12 @@ namespace Kinema.MotionMatching.Editor
                     return report;
                 }
 
+                if (config.GenerateMirroredVariants)
+                {
+                    AppendMirroredFrames(schema, allFeatures, allContacts, allTags, frames, contactBoneIndices);
+                    report.Warnings.Add("Mirrored variants baked (experimental): frame count doubled.");
+                }
+
                 float[] features = allFeatures.ToArray();
                 ComputeNormalization(features, frames.Count, dim, out float[] mean, out float[] std);
                 Normalize(features, frames.Count, dim, mean, std);
@@ -172,6 +178,84 @@ namespace Kinema.MotionMatching.Editor
         #endregion
 
         #region Tools and Utilities
+
+        /// <summary>
+        /// Duplicates every baked frame as a mirrored variant: trajectory and root velocity X-flipped,
+        /// Left/Right bone slots swapped with X-flipped positions/velocities, contacts bit-swapped.
+        /// Playback mirrors the pose at runtime (<see cref="MirrorPose"/>).
+        /// </summary>
+        private static void AppendMirroredFrames(
+            FeatureSchema schema, List<float> features, List<byte> contacts, List<ulong> tags,
+            List<MotionFrameInfo> frames, int[] contactBoneIndices)
+        {
+            int dim = schema.Dimension;
+            int originalCount = frames.Count;
+
+            // Bone slot permutation: Left <-> Right by name, self when unpaired.
+            var bonePair = new int[schema.BoneCount];
+            for (int b = 0; b < schema.BoneCount; b++)
+            {
+                bonePair[b] = b;
+                string n = schema.BoneNames[b];
+                string m = n.Contains("Left") ? n.Replace("Left", "Right")
+                         : n.Contains("Right") ? n.Replace("Right", "Left") : null;
+                if (m == null) continue;
+                for (int j = 0; j < schema.BoneCount; j++)
+                    if (schema.BoneNames[j] == m) { bonePair[b] = j; break; }
+            }
+
+            // Contact slot permutation follows the bone permutation.
+            var contactPair = new int[contactBoneIndices.Length];
+            for (int c = 0; c < contactBoneIndices.Length; c++)
+            {
+                contactPair[c] = c;
+                int mirroredBone = bonePair[contactBoneIndices[c]];
+                for (int j = 0; j < contactBoneIndices.Length; j++)
+                    if (contactBoneIndices[j] == mirroredBone) { contactPair[c] = j; break; }
+            }
+
+            var row = new float[dim];
+            for (int f = 0; f < originalCount; f++)
+            {
+                int src = f * dim;
+
+                // Trajectory: x components flip, y (forward) stays.
+                for (int p = 0; p < schema.TrajectoryPointCount; p++)
+                {
+                    int px = schema.TrajectoryPositionOffset + p * 2;
+                    int dx = schema.TrajectoryDirectionOffset + p * 2;
+                    row[px] = -features[src + px]; row[px + 1] = features[src + px + 1];
+                    row[dx] = -features[src + dx]; row[dx + 1] = features[src + dx + 1];
+                }
+
+                // Bones: swap L/R slots, flip x of positions and velocities.
+                for (int b = 0; b < schema.BoneCount; b++)
+                {
+                    int dst = schema.BonePositionOffset + b * 3;
+                    int from = schema.BonePositionOffset + bonePair[b] * 3;
+                    row[dst] = -features[src + from]; row[dst + 1] = features[src + from + 1]; row[dst + 2] = features[src + from + 2];
+
+                    dst = schema.BoneVelocityOffset + b * 3;
+                    from = schema.BoneVelocityOffset + bonePair[b] * 3;
+                    row[dst] = -features[src + from]; row[dst + 1] = features[src + from + 1]; row[dst + 2] = features[src + from + 2];
+                }
+
+                row[schema.RootVelocityOffset] = -features[src + schema.RootVelocityOffset];
+                row[schema.RootVelocityOffset + 1] = features[src + schema.RootVelocityOffset + 1];
+
+                features.AddRange(row);
+
+                byte srcContacts = contacts[f];
+                byte mirroredContacts = 0;
+                for (int c = 0; c < contactPair.Length && c < 8; c++)
+                    if ((srcContacts & (1 << contactPair[c])) != 0) mirroredContacts |= (byte)(1 << c);
+                contacts.Add(mirroredContacts);
+
+                tags.Add(tags[f]);
+                MotionFrameInfo original = frames[f];
+                frames.Add(new MotionFrameInfo(original.ClipIndex, original.Time, isMirrored: true));
+            }
+        }
 
         private static void ComputeNormalization(float[] features, int frameCount, int dim, out float[] mean, out float[] std)
         {

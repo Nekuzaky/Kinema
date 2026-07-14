@@ -381,6 +381,44 @@ namespace Kinema.MotionMatching.Editor
                     DrawSwatch(MotionMatchingStyles.TrajectoryCandidate); GUILayout.Label("Candidate trajectory", MotionMatchingStyles.KeyLabel);
                 }
             }
+
+            DrawSnapshotHistory(_controller);
+        }
+
+        [SerializeField] private int _snapshotAge;
+
+        /// <summary>Scrub through the recorded matching decisions (0 = latest).</summary>
+        private void DrawSnapshotHistory(MotionMatchingController controller)
+        {
+            SearchSnapshotRecorder recorder = controller.Snapshots;
+            if (recorder == null || recorder.Count == 0) return;
+
+            using (MotionMatchingStyles.BeginSection($"History — {recorder.Count} searches recorded"))
+            {
+                _snapshotAge = EditorGUILayout.IntSlider("Steps back", _snapshotAge, 0, recorder.Count - 1);
+                SearchSnapshot s = recorder.GetByAge(_snapshotAge);
+                if (s == null) return;
+
+                MotionMatchingDatabase db = controller.Database;
+                string clipName = s.ClipIndex >= 0 && s.ClipIndex < db.ClipCount ? db.GetClip(s.ClipIndex).Name : "—";
+
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    MotionMatchingStyles.KeyValue("At", s.Time.ToString("F2") + " s");
+                    if (s.Jumped) MotionMatchingStyles.StatusPill("JUMP", MotionMatchingStyles.Accent);
+                }
+                MotionMatchingStyles.KeyValue("Clip", $"{clipName} @ {s.ClipTime:F3}s (frame {s.SelectedFrame})");
+                MotionMatchingStyles.KeyValue("Total / Continuation",
+                    $"{s.TotalCost:F3} / {(s.ContinuationCost < 0f ? "n/a" : s.ContinuationCost.ToString("F3"))}");
+
+                float max = 1e-4f;
+                for (int i = 0; i < s.GroupCosts.Length; i++) max = Mathf.Max(max, s.GroupCosts[i]);
+                for (int gi = 0; gi < FeatureGroupExtensions.Count; gi++)
+                {
+                    Color c = gi < 2 ? MotionMatchingStyles.TrajectoryDesired : MotionMatchingStyles.TrajectoryCandidate;
+                    MotionMatchingStyles.CostBar(((FeatureGroup)gi).ToDisplayName(), s.GroupCosts[gi], max, c);
+                }
+            }
         }
 
         private static void DrawSwatch(Color color)

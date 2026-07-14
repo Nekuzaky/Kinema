@@ -38,6 +38,10 @@ namespace Kinema.MotionMatching
         [Tooltip("Clips baked into the database. Locomotion clips (walk / run / turns / idle) for a V1.")]
         [SerializeField] private List<AnimationClip> _clips = new List<AnimationClip>();
 
+        [Header("Mirroring (experimental)")]
+        [Tooltip("Bake a mirrored variant of every frame (doubles coverage). Playback mirrors the pose at runtime; requires a left/right symmetric rig. Experimental.")]
+        [SerializeField] private bool _generateMirroredVariants;
+
         [Header("Tags")]
         [Tooltip("Project tag vocabulary (max 64). Ranges on clips reference these by index.")]
         [SerializeField] private List<string> _tagNames = new List<string>();
@@ -50,6 +54,7 @@ namespace Kinema.MotionMatching
         public int BakeFrameRate => _bakeFrameRate;
         public GameObject RigPrefab => _rigPrefab;
         public IReadOnlyList<AnimationClip> Clips => _clips;
+        public bool GenerateMirroredVariants => _generateMirroredVariants;
         public IReadOnlyList<string> TagNames => _tagNames;
         public IReadOnlyList<ClipTagTrack> TagTracks => _tagTracks;
 
