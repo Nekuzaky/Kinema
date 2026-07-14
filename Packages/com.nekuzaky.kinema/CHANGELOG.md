@@ -4,6 +4,24 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2026-07-14
+
+Scale release.
+
+### Added
+- Calibration profiles: named weight presets on the config, baked into the database, applied at
+  runtime with `controller.SetCalibrationProfile(name)` (no rebake).
+- 16-bit feature storage (opt-in): features serialized as halves, halving the asset size; decoded
+  once at load. Negligible quality impact on normalized features.
+- Multi-database: an additional-databases list on the controller plus
+  `SwitchDatabase(database | index)`; the next search re-anchors in the new set and the
+  inertializer absorbs the transition.
+- Optional KD-tree search (`SearchAcceleration.KdTree`): a tree over weight-scaled features for
+  very large databases. Falls back to the Burst linear job whenever tag masks or ignore ranges are
+  active. BurstLinear remains the default and the right choice below ~50k frames.
+- Mecanim interop: `SetMatchingActive(bool, fade)` fades the matching output against the
+  Animator's own controller, so scripted states and cinematics can take over and hand back.
+
 ## [0.5.0] - 2026-07-14
 
 Actions release.

@@ -42,6 +42,8 @@ MonoBehaviour:
   - {fileID: 7400000, guid: 837962f973174584f92827418e34be5f, type: 2}
   - {fileID: 7400000, guid: 26fe34f4286e0204ea80a56881362c3e, type: 2}
   - {fileID: 7400000, guid: 988027d0ccd11dc408437c3505038216, type: 2}
+  _calibrationProfiles: []
+  _halfPrecision: 0
   _generateMirroredVariants: 0
   _tagNames: []
   _tagTracks: []

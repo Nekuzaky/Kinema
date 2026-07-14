@@ -149,7 +149,8 @@ namespace Kinema.MotionMatching.Editor
                     config.DefaultWeights, fps,
                     DateTime.UtcNow.ToString("u"), totalDuration,
                     allContacts.ToArray(), contactBoneIndices,
-                    allTags.ToArray(), System.Linq.Enumerable.ToArray(config.TagNames));
+                    allTags.ToArray(), System.Linq.Enumerable.ToArray(config.TagNames),
+                    System.Linq.Enumerable.ToArray(config.CalibrationProfiles), config.HalfPrecision);
 
                 string path = SaveDatabase(config, database, existingDatabase != null);
 

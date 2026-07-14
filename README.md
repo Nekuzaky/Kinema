@@ -14,9 +14,15 @@ demo directly.
 
 ## Features
 
-- Runtime locomotion motion matching on a manually clocked `PlayableGraph` with two-slot crossfades.
-- Clear data model: schema, trajectory samples, frames, clips, and per-group weights, all expressed
-  in a shared character-space reference frame.
+- Runtime locomotion motion matching on a manually clocked `PlayableGraph`, with inertialization
+  transitions (Burst animation job) or two-slot crossfades.
+- Past + future trajectory matching, per-group and per-bone feature weights, calibration profiles.
+- Baked foot contacts with a foot-lock IK component; semantic tags (64-bit masks) with filtered
+  search and a visual timeline editor; AnimationEvent relay.
+- Motion events with root warping, upper-body overlay layers, experimental mirrored variants.
+- Burst-compiled parallel search (optional KD-tree for very large sets), 16-bit feature storage,
+  multi-database switching, Mecanim interop.
+- Snapshot debugger: scrub the last 240 matching decisions with full cost breakdowns.
 - Offline bake from `AnimationClip`s into a normalized feature database (per-dimension mean/std).
 - Configurable weighted scorer with a per-group cost breakdown.
 - Integrated editor window (Overview / Database / Bake / Debug / Settings), custom inspectors, and

@@ -25,6 +25,11 @@ namespace Kinema.MotionMatching
         [SerializeField] private float[] _featureMean = Array.Empty<float>();    // dimension
         [SerializeField] private float[] _featureStd = Array.Empty<float>();     // dimension
 
+        // Optional 16-bit storage: halves the asset size; decoded once at runtime.
+        [SerializeField] private bool _halfPrecision;
+        [SerializeField] private ushort[] _featuresHalf = Array.Empty<ushort>();
+        [NonSerialized] private float[] _decodedFeatures;
+
         [SerializeField] private MotionFrameInfo[] _frames = Array.Empty<MotionFrameInfo>();
         [SerializeField] private MotionClipEntry[] _clips = Array.Empty<MotionClipEntry>();
 
@@ -47,7 +52,26 @@ namespace Kinema.MotionMatching
         public int FrameCount => _frameCount;
         public int ClipCount => _clips.Length;
 
-        public float[] Features => _features;
+        public float[] Features
+        {
+            get
+            {
+                if (_features != null && _features.Length > 0) return _features;
+                if (_halfPrecision && _featuresHalf.Length > 0)
+                {
+                    if (_decodedFeatures == null)
+                    {
+                        _decodedFeatures = new float[_featuresHalf.Length];
+                        for (int i = 0; i < _featuresHalf.Length; i++)
+                            _decodedFeatures[i] = Mathf.HalfToFloat(_featuresHalf[i]);
+                    }
+                    return _decodedFeatures;
+                }
+                return _features ?? Array.Empty<float>();
+            }
+        }
+
+        public bool IsHalfPrecision => _halfPrecision;
         public float[] FeatureMean => _featureMean;
         public float[] FeatureStd => _featureStd;
 
@@ -56,7 +80,18 @@ namespace Kinema.MotionMatching
         public string BakeDateUtc => _bakeDateUtc;
         public float TotalDurationSeconds => _totalDurationSeconds;
 
-        public bool IsValid => _frameCount > 0 && _dimension > 0 && _features.Length == _frameCount * _dimension;
+        public bool IsValid => _frameCount > 0 && _dimension > 0 && Features.Length == _frameCount * _dimension;
+
+        [SerializeField] private CalibrationProfile[] _calibrationProfiles = Array.Empty<CalibrationProfile>();
+        public CalibrationProfile[] CalibrationProfiles => _calibrationProfiles;
+
+        /// <summary>Profile by name, or null when unknown.</summary>
+        public CalibrationProfile FindProfile(string profileName)
+        {
+            for (int i = 0; i < _calibrationProfiles.Length; i++)
+                if (_calibrationProfiles[i].Name == profileName) return _calibrationProfiles[i];
+            return null;
+        }
 
         /// <summary>Schema-bone indices flagged as feet at bake time (max 8).</summary>
         public int[] ContactBoneIndices => _contactBoneIndices;
@@ -127,17 +162,18 @@ namespace Kinema.MotionMatching
             int baseOffset = GetFeatureOffset(frameIndex);
             int posOffset = _schema.TrajectoryPositionOffset;
             int dirOffset = _schema.TrajectoryDirectionOffset;
+            float[] features = Features;
 
             for (int p = 0; p < points && p < buffer.Length; p++)
             {
                 int px = posOffset + p * 2;
                 int dx = dirOffset + p * 2;
                 Vector2 pos = new Vector2(
-                    DenormalizeValue(px, _features[baseOffset + px]),
-                    DenormalizeValue(px + 1, _features[baseOffset + px + 1]));
+                    DenormalizeValue(px, features[baseOffset + px]),
+                    DenormalizeValue(px + 1, features[baseOffset + px + 1]));
                 Vector2 dir = new Vector2(
-                    DenormalizeValue(dx, _features[baseOffset + dx]),
-                    DenormalizeValue(dx + 1, _features[baseOffset + dx + 1]));
+                    DenormalizeValue(dx, features[baseOffset + dx]),
+                    DenormalizeValue(dx + 1, features[baseOffset + dx + 1]));
                 buffer[p] = new TrajectorySample(pos, dir);
             }
         }
@@ -176,13 +212,14 @@ namespace Kinema.MotionMatching
             int baseOffset = GetFeatureOffset(frameIndex);
             int posOffset = _schema.BonePositionOffset;
             int count = _schema.BoneCount;
+            float[] features = Features;
             for (int b = 0; b < count && b < buffer.Length; b++)
             {
                 int o = posOffset + b * 3;
                 buffer[b] = new Vector3(
-                    DenormalizeValue(o, _features[baseOffset + o]),
-                    DenormalizeValue(o + 1, _features[baseOffset + o + 1]),
-                    DenormalizeValue(o + 2, _features[baseOffset + o + 2]));
+                    DenormalizeValue(o, features[baseOffset + o]),
+                    DenormalizeValue(o + 1, features[baseOffset + o + 1]),
+                    DenormalizeValue(o + 2, features[baseOffset + o + 2]));
             }
         }
 
@@ -208,8 +245,24 @@ namespace Kinema.MotionMatching
             byte[] contacts = null,
             int[] contactBoneIndices = null,
             ulong[] frameTags = null,
-            string[] tagNames = null)
+            string[] tagNames = null,
+            CalibrationProfile[] calibrationProfiles = null,
+            bool halfPrecision = false)
         {
+            _calibrationProfiles = calibrationProfiles ?? Array.Empty<CalibrationProfile>();
+            _halfPrecision = halfPrecision;
+            _decodedFeatures = null;
+            if (halfPrecision)
+            {
+                _featuresHalf = new ushort[features.Length];
+                for (int i = 0; i < features.Length; i++)
+                    _featuresHalf[i] = Mathf.FloatToHalf(features[i]);
+                features = Array.Empty<float>(); // stored half only; decoded on demand.
+            }
+            else
+            {
+                _featuresHalf = Array.Empty<ushort>();
+            }
             _contacts = contacts ?? Array.Empty<byte>();
             _contactBoneIndices = contactBoneIndices ?? Array.Empty<int>();
             _frameTags = frameTags ?? Array.Empty<ulong>();

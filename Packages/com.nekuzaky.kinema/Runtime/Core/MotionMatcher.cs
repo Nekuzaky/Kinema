@@ -28,12 +28,22 @@ namespace Kinema.MotionMatching
         public bool IsValid => FrameIndex >= 0;
     }
 
+    /// <summary>How the nearest-neighbour search is executed.</summary>
+    public enum SearchAcceleration
+    {
+        /// <summary>Burst-compiled parallel linear scan. Best default up to ~50k frames; supports tag filtering.</summary>
+        BurstLinear,
+        /// <summary>KD-tree over weight-scaled features. For very large databases; falls back to the
+        /// linear job whenever tag masks or ignore ranges are active.</summary>
+        KdTree
+    }
+
     /// <summary>
     /// Weighted nearest-neighbour search over the database, executed as a Burst-compiled parallel
     /// job: the frame range is split into chunks, each worker scans its chunk with a weighted squared
     /// distance and a branch-and-bound early-out, and the per-chunk winners are reduced on the main
     /// thread. Features are uploaded once into a persistent <see cref="NativeArray{T}"/>.
-    /// Owns native memory: call <see cref="Dispose"/> when done.
+    /// An optional KD-tree path serves very large databases. Owns native memory: call <see cref="Dispose"/>.
     /// </summary>
     public sealed class MotionMatcher : IDisposable
     {
@@ -43,6 +53,7 @@ namespace Kinema.MotionMatching
 
         private readonly MotionMatchingDatabase _database;
         private float[] _perDimensionWeights;
+        private KdTreeSearch _kdTree;
 
         private NativeArray<float> _nativeFeatures;
         private NativeArray<float> _nativeWeights;
@@ -76,6 +87,9 @@ namespace Kinema.MotionMatching
 
         public MotionMatchingDatabase Database => _database;
 
+        /// <summary>Search strategy. KD-tree is rebuilt lazily after weight changes.</summary>
+        public SearchAcceleration Acceleration { get; set; } = SearchAcceleration.BurstLinear;
+
         #endregion
 
         #region Main API
@@ -85,6 +99,7 @@ namespace Kinema.MotionMatching
         {
             _perDimensionWeights = _database.Schema.BuildPerDimensionWeights(weights);
             _nativeWeights.CopyFrom(_perDimensionWeights);
+            _kdTree?.Invalidate(); // metric changed: the scaled tree is stale.
         }
 
         /// <summary>
@@ -97,6 +112,19 @@ namespace Kinema.MotionMatching
             MotionMatchingQuery query, int ignoreFrame = -1, int ignoreRadius = 0,
             ulong requiredTags = 0ul, ulong excludedTags = 0ul)
         {
+            // KD-tree path: exact under the weighted metric, but cannot express tag filters or
+            // ignore ranges - use it only when neither is active.
+            if (Acceleration == SearchAcceleration.KdTree
+                && requiredTags == 0ul && excludedTags == 0ul && ignoreFrame < 0)
+            {
+                _kdTree ??= new KdTreeSearch();
+                if (!_kdTree.IsBuilt)
+                    _kdTree.Build(_database.Features, _database.FrameCount, _database.Dimension, _perDimensionWeights);
+
+                int frame = _kdTree.Nearest(query.Values, _perDimensionWeights, out float kdCost);
+                return BuildResult(query, frame, kdCost);
+            }
+
             _nativeQuery.CopyFrom(query.Values);
 
             var job = new SearchJob

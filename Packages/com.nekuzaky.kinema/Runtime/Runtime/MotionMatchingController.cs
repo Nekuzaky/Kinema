@@ -22,7 +22,14 @@ namespace Kinema.MotionMatching
 
         [Header("Data")]
         [SerializeField] private MotionMatchingDatabase _database;
+
+        [Tooltip("Optional extra databases (stances, states). Switch at runtime with SwitchDatabase.")]
+        [SerializeField] private MotionMatchingDatabase[] _additionalDatabases = System.Array.Empty<MotionMatchingDatabase>();
+
         [SerializeField] private Animator _animator;
+
+        [Tooltip("Search strategy. BurstLinear is the right default; KdTree targets very large databases.")]
+        [SerializeField] private SearchAcceleration _searchAcceleration = SearchAcceleration.BurstLinear;
 
         [Header("Matching")]
         [Tooltip("Per-group weights. Initialized from the database default; tweak live to feel the effect.")]
@@ -101,6 +108,45 @@ namespace Kinema.MotionMatching
 
         /// <summary>Ring buffer of the last matching decisions, for the snapshot debugger.</summary>
         public SearchSnapshotRecorder Snapshots => _snapshots;
+
+        /// <summary>Applies a named weight preset baked into the database. Returns false when unknown.</summary>
+        public bool SetCalibrationProfile(string profileName)
+        {
+            CalibrationProfile profile = _database != null ? _database.FindProfile(profileName) : null;
+            if (profile == null) return false;
+            Weights = profile.Weights;
+            return true;
+        }
+
+        /// <summary>
+        /// Switches to another database (stance/state change). Rebuilds the runtime; the next search
+        /// picks the best frame in the new set and the inertializer absorbs the transition.
+        /// </summary>
+        public bool SwitchDatabase(MotionMatchingDatabase database)
+        {
+            if (database == null || !database.IsValid) return false;
+            _database = database;
+            Initialize();
+            return true;
+        }
+
+        /// <summary>Switch to a database from the additional list by index.</summary>
+        public bool SwitchDatabase(int additionalIndex)
+        {
+            if (additionalIndex < 0 || additionalIndex >= _additionalDatabases.Length) return false;
+            return SwitchDatabase(_additionalDatabases[additionalIndex]);
+        }
+
+        /// <summary>
+        /// Fades matching in or out against the Animator's own controller (Mecanim interop): at
+        /// weight 0 the AnimatorController underneath drives the character (cinematics, scripted
+        /// states), at 1 motion matching does. The graph keeps running either way.
+        /// </summary>
+        public void SetMatchingActive(bool active, float fadeTime = 0.2f)
+        {
+            _outputTarget = active ? 1f : 0f;
+            _outputFade = Mathf.Max(0.01f, fadeTime);
+        }
         public int CurrentClipIndex => _initialized ? _slotClipIndex[_activeSlot] : -1;
         public float CurrentClipTime => _initialized ? (float)_slotTime[_activeSlot] : 0f;
 
@@ -148,6 +194,9 @@ namespace Kinema.MotionMatching
         private float _eventClipLength;
 
         private SearchSnapshotRecorder _snapshots;
+
+        private AnimationPlayableOutput _output;
+        private float _outputWeight = 1f, _outputTarget = 1f, _outputFade = 0.2f;
         private readonly AnimationClipPlayable[] _slots = new AnimationClipPlayable[SlotCount];
         private readonly int[] _slotClipIndex = new int[SlotCount];
         private readonly double[] _slotTime = new double[SlotCount];
@@ -227,7 +276,7 @@ namespace Kinema.MotionMatching
                 return;
             }
 
-            _matcher = new MotionMatcher(_database, _weights);
+            _matcher = new MotionMatcher(_database, _weights) { Acceleration = _searchAcceleration };
             _query = new MotionMatchingQuery(_database.Schema);
             _desiredTrajectory = new TrajectorySample[_database.Schema.TrajectoryPointCount];
             _candidateTrajectory = new TrajectorySample[_database.Schema.TrajectoryPointCount];
@@ -378,6 +427,13 @@ namespace Kinema.MotionMatching
 
         private void UpdateOverlay(float dt)
         {
+            // Mecanim interop: fade the whole matching output against the AnimatorController.
+            if (!Mathf.Approximately(_outputWeight, _outputTarget))
+            {
+                _outputWeight = Mathf.MoveTowards(_outputWeight, _outputTarget, dt / _outputFade);
+                _output.SetWeight(_outputWeight);
+            }
+
             if (!_layerMixer.IsValid()) return;
             _overlayWeight = Mathf.MoveTowards(_overlayWeight, _overlayTarget, dt / _overlayFade);
             _layerMixer.SetInputWeight(1, _overlayWeight);
@@ -557,7 +613,9 @@ namespace Kinema.MotionMatching
             _graph = PlayableGraph.Create($"MotionMatching ({name})");
             _graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
 
-            var output = AnimationPlayableOutput.Create(_graph, "MM Output", _animator);
+            _output = AnimationPlayableOutput.Create(_graph, "MM Output", _animator);
+            var output = _output;
+            _output.SetWeight(_outputWeight);
             _mixer = AnimationMixerPlayable.Create(_graph, SlotCount);
 
             // Chain: mixer -> [mirror] -> [inertializer] -> layerMixer -> output.

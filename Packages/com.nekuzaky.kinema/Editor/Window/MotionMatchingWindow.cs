@@ -450,6 +450,18 @@ namespace Kinema.MotionMatching.Editor
                 MotionMatchingStyles.HelpRow("Weights are normalized-space multipliers per feature group. Baked into the database as its default; a controller can override them at runtime.", MessageType.None);
             }
 
+            using (MotionMatchingStyles.BeginSection("Calibration Profiles"))
+            {
+                EditorGUILayout.PropertyField(so.FindProperty("_calibrationProfiles"), true);
+                MotionMatchingStyles.HelpRow("Named weight presets baked into the database. Apply at runtime with controller.SetCalibrationProfile(name).", MessageType.None);
+            }
+
+            using (MotionMatchingStyles.BeginSection("Storage & Variants"))
+            {
+                EditorGUILayout.PropertyField(so.FindProperty("_halfPrecision"));
+                EditorGUILayout.PropertyField(so.FindProperty("_generateMirroredVariants"));
+            }
+
             using (MotionMatchingStyles.BeginSection("Feature Schema"))
             {
                 SerializedProperty schema = so.FindProperty("_schema");

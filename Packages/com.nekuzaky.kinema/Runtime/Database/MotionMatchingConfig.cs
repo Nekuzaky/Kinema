@@ -38,6 +38,14 @@ namespace Kinema.MotionMatching
         [Tooltip("Clips baked into the database. Locomotion clips (walk / run / turns / idle) for a V1.")]
         [SerializeField] private List<AnimationClip> _clips = new List<AnimationClip>();
 
+        [Header("Calibration")]
+        [Tooltip("Named weight presets baked into the database; switch at runtime with SetCalibrationProfile.")]
+        [SerializeField] private List<CalibrationProfile> _calibrationProfiles = new List<CalibrationProfile>();
+
+        [Header("Storage")]
+        [Tooltip("Store features as 16-bit halves: halves the asset size, decoded once at load. Negligible quality impact on normalized features.")]
+        [SerializeField] private bool _halfPrecision;
+
         [Header("Mirroring (experimental)")]
         [Tooltip("Bake a mirrored variant of every frame (doubles coverage). Playback mirrors the pose at runtime; requires a left/right symmetric rig. Experimental.")]
         [SerializeField] private bool _generateMirroredVariants;
@@ -55,6 +63,8 @@ namespace Kinema.MotionMatching
         public GameObject RigPrefab => _rigPrefab;
         public IReadOnlyList<AnimationClip> Clips => _clips;
         public bool GenerateMirroredVariants => _generateMirroredVariants;
+        public IReadOnlyList<CalibrationProfile> CalibrationProfiles => _calibrationProfiles;
+        public bool HalfPrecision => _halfPrecision;
         public IReadOnlyList<string> TagNames => _tagNames;
         public IReadOnlyList<ClipTagTrack> TagTracks => _tagTracks;
 
