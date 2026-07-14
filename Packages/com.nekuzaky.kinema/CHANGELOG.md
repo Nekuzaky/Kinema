@@ -4,6 +4,25 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-07-14
+
+Matching quality and tooling pass, informed by JLPM22/MxM-style systems.
+
+### Added
+- Past + future trajectory: `TrajectoryTimes` now accepts negative offsets, sampled from a runtime
+  `TrajectoryHistory` ring buffer, so matching considers where the character came from, not only where it is going.
+- Per-bone feature weights (`FeatureSchema.BoneWeights`), parallel to `BoneNames`, to weight feet/hands
+  above the hips (MxM-style joint weighting).
+- Transition (clip-change) cost penalty on the controller to reduce clip flicker while preserving responsiveness.
+- Scene-view debug gizmos for the matched frame's sampled bone positions, plus the bone-weights field in the Settings tab.
+
+### Changed
+- Default schema now samples two past and four future trajectory points. Databases baked with 0.1.0 must be rebaked.
+
+### Roadmap
+- Inertialization-based pose transitions and Burst/Jobs-accelerated search are the next steps; they change
+  runtime behaviour and are best landed with in-editor playtesting.
+
 ## [0.1.0] - 2026-07-14
 
 Initial release.

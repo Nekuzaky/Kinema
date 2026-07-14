@@ -30,9 +30,10 @@ Each baked frame is one flat, normalized vector laid out as contiguous groups:
 [ TrajectoryPosition 2*T | TrajectoryDirection 2*T | BonePosition 3*B | BoneVelocity 3*B | RootVelocity 2 ]
 ```
 
-`T` is the number of trajectory sample times, `B` the number of sampled bones. Everything is
-expressed in `CharacterSpace` (a horizontal frame at the root, +Z forward), which makes matching
-invariant to world position and heading. Values are stored normalized (per-dimension mean and
+`T` is the number of trajectory sample times (negative offsets sample the character's recorded past
+via a `TrajectoryHistory` buffer, positive offsets the predicted future), `B` the number of sampled
+bones. Everything is expressed in `CharacterSpace` (a horizontal frame at the root, +Z forward),
+which makes matching invariant to world position and heading. Values are stored normalized (per-dimension mean and
 standard deviation), and the statistics are kept so a runtime query can be normalized identically.
 
 ## Scoring
@@ -76,7 +77,12 @@ candidate trajectories with a cost label.
 
 ## Extension points
 
-The structure is intentionally open for:
+Next on the roadmap (behaviour-changing, best landed with in-editor playtesting):
+
+- Inertialization-based pose transitions (replacing the two-slot crossfade for velocity-continuous blends).
+- Burst/Jobs-accelerated search over `NativeArray` features for large databases.
+
+The structure is also open for:
 
 - Mirroring (`MotionFrameInfo.IsMirrored` is reserved).
 - Tags and sections (metadata on frames/clips, filtered in `MotionMatcher.Search`).

@@ -395,6 +395,7 @@ namespace Kinema.MotionMatching.Editor
                 SerializedProperty schema = so.FindProperty("_schema");
                 EditorGUILayout.PropertyField(schema.FindPropertyRelative("TrajectoryTimes"), true);
                 EditorGUILayout.PropertyField(schema.FindPropertyRelative("BoneNames"), true);
+                EditorGUILayout.PropertyField(schema.FindPropertyRelative("BoneWeights"), true);
                 MotionMatchingStyles.HelpRow("Changing the schema changes the feature layout — rebake the database afterwards.", MessageType.Warning);
             }
 

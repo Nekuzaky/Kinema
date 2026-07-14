@@ -74,6 +74,12 @@ namespace Kinema.MotionMatching
             return new Vector3(Vector3.Dot(worldVector, Right), worldVector.y, Vector3.Dot(worldVector, Forward));
         }
 
+        /// <summary>Full 3D local offset (x = right, y = height, z = forward) -> world point. Inverse of <see cref="ToLocalOffset3D"/>.</summary>
+        public Vector3 ToWorldOffset3D(Vector3 localOffset)
+        {
+            return Origin + Right * localOffset.x + Vector3.up * localOffset.y + Forward * localOffset.z;
+        }
+
         #endregion
     }
 }

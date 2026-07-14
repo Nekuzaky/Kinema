@@ -18,11 +18,14 @@ namespace Kinema.MotionMatching
     {
         #region Public
 
-        [Tooltip("Future time offsets (seconds) sampled for the trajectory, e.g. 0.2, 0.4, 0.6, 1.0.")]
-        public float[] TrajectoryTimes = { 0.2f, 0.4f, 0.6f, 1.0f };
+        [Tooltip("Trajectory time offsets (seconds). Negative = past (from history), positive = future (predicted). e.g. -0.4, -0.2, 0.2, 0.4, 0.6, 1.0.")]
+        public float[] TrajectoryTimes = { -0.4f, -0.2f, 0.2f, 0.4f, 0.6f, 1.0f };
 
         [Tooltip("Transform names sampled for the pose, matched against the rig hierarchy (e.g. LeftFoot, RightFoot, Hips).")]
         public string[] BoneNames = { "LeftFoot", "RightFoot", "Hips" };
+
+        [Tooltip("Per-bone importance multiplier, parallel to Bone Names. Raise feet for crisper footing (MxM-style joint weights).")]
+        public float[] BoneWeights = { 1f, 1f, 1f };
 
         #endregion
 
@@ -89,10 +92,20 @@ namespace Kinema.MotionMatching
                 int offset = GetGroupOffset(group);
                 int length = GetGroupLength(group);
                 float w = Mathf.Max(0f, weights.Get(group));
+
+                // Bone groups additionally scale by the per-bone weight (3 dims per bone).
+                bool perBone = group == FeatureGroup.BonePosition || group == FeatureGroup.BoneVelocity;
                 for (int i = 0; i < length; i++)
-                    result[offset + i] = w;
+                    result[offset + i] = perBone ? w * GetBoneWeight(i / 3) : w;
             }
             return result;
+        }
+
+        /// <summary>Per-bone multiplier; missing entries default to 1.</summary>
+        public float GetBoneWeight(int boneIndex)
+        {
+            if (BoneWeights == null || boneIndex < 0 || boneIndex >= BoneWeights.Length) return 1f;
+            return Mathf.Max(0f, BoneWeights[boneIndex]);
         }
 
         public FeatureSchema Clone()
@@ -100,7 +113,8 @@ namespace Kinema.MotionMatching
             return new FeatureSchema
             {
                 TrajectoryTimes = (float[])(TrajectoryTimes?.Clone() ?? Array.Empty<float>()),
-                BoneNames = (string[])(BoneNames?.Clone() ?? Array.Empty<string>())
+                BoneNames = (string[])(BoneNames?.Clone() ?? Array.Empty<string>()),
+                BoneWeights = (float[])(BoneWeights?.Clone() ?? Array.Empty<float>())
             };
         }
 

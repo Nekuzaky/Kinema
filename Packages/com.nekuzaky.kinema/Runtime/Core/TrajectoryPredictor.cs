@@ -40,6 +40,8 @@ namespace Kinema.MotionMatching
         /// <param name="currentWorldVelocity">Current horizontal velocity (m/s, world).</param>
         /// <param name="desiredWorldVelocity">Target horizontal velocity (m/s, world).</param>
         /// <param name="desiredWorldFacing">Target horizontal facing (world). Zero falls back to velocity direction.</param>
+        /// <param name="history">Recent root transforms used to fill the past (negative) trajectory times. May be null.</param>
+        /// <param name="now">Current absolute time (seconds), paired with <paramref name="history"/>.</param>
         public static void Predict(
             CharacterSpace space,
             Vector3 currentWorldVelocity,
@@ -47,6 +49,8 @@ namespace Kinema.MotionMatching
             Vector3 desiredWorldFacing,
             float[] trajectoryTimes,
             TrajectoryPredictionSettings settings,
+            TrajectoryHistory history,
+            float now,
             TrajectorySample[] buffer)
         {
             Vector3 currentVel = Flatten(currentWorldVelocity);
@@ -67,7 +71,22 @@ namespace Kinema.MotionMatching
             {
                 float t = trajectoryTimes[i];
 
-                // Position: integral of a velocity that approaches desiredVel with time constant tauPos.
+                // Past: replay the recorded root path, expressed in the current character space.
+                if (t < 0f)
+                {
+                    if (history != null && history.HasData)
+                    {
+                        history.Sample(now + t, out Vector3 pastPos, out Vector3 pastFwd);
+                        buffer[i] = new TrajectorySample(space.ToLocalPoint(pastPos), space.ToLocalDirection(pastFwd));
+                    }
+                    else
+                    {
+                        buffer[i] = new TrajectorySample(Vector2.zero, new Vector2(0f, 1f));
+                    }
+                    continue;
+                }
+
+                // Future: integral of a velocity that approaches desiredVel with time constant tauPos.
                 float posBlend = tauPos * (1f - Mathf.Exp(-t / tauPos));
                 Vector3 worldOffset = desiredVel * t + (currentVel - desiredVel) * posBlend;
                 Vector3 worldPoint = space.Origin + worldOffset;

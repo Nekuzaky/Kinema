@@ -37,6 +37,9 @@ namespace Kinema.MotionMatching
         [Tooltip("Candidates within this many seconds of the current frame (same clip) count as 'keep playing'.")]
         [SerializeField, Range(0f, 0.3f)] private float _continuityWindow = 0.12f;
 
+        [Tooltip("Extra cost added to candidates from a different clip. Raise to reduce clip flicker; lower for snappier switching.")]
+        [SerializeField, Range(0f, 1f)] private float _clipChangeCost = 0.1f;
+
         [Header("Playback")]
         [Tooltip("Crossfade duration when jumping to a new frame.")]
         [SerializeField, Range(0f, 0.4f)] private float _blendTime = 0.15f;
@@ -53,6 +56,7 @@ namespace Kinema.MotionMatching
         [SerializeField] private bool _drawGizmos = true;
         [SerializeField] private Color _desiredTrajectoryColor = new Color(0.2f, 0.8f, 1f);
         [SerializeField] private Color _candidateTrajectoryColor = new Color(1f, 0.7f, 0.1f);
+        [SerializeField] private Color _boneColor = new Color(0.4f, 1f, 0.5f);
 
         public MotionMatchingDatabase Database => _database;
         public bool IsInitialized => _initialized;
@@ -107,6 +111,11 @@ namespace Kinema.MotionMatching
         private Vector3 _measuredVelocity;
         private TrajectorySample[] _desiredTrajectory;
         private TrajectorySample[] _candidateTrajectory;
+
+        private TrajectoryHistory _history;
+        private int _lastCurrentFrame = -1;
+        private Vector3[] _currentBones;
+        private Vector3[] _candidateBones;
 
         #endregion
 
@@ -170,6 +179,10 @@ namespace Kinema.MotionMatching
             _query = new MotionMatchingQuery(_database.Schema);
             _desiredTrajectory = new TrajectorySample[_database.Schema.TrajectoryPointCount];
             _candidateTrajectory = new TrajectorySample[_database.Schema.TrajectoryPointCount];
+            int boneCount = _database.Schema.BoneCount;
+            _currentBones = new Vector3[boneCount];
+            _candidateBones = new Vector3[boneCount];
+            _history = new TrajectoryHistory(128);
             _debug.DesiredTrajectory = _desiredTrajectory;
             _debug.CandidateTrajectory = _candidateTrajectory;
             _debug.Clear();
@@ -202,6 +215,7 @@ namespace Kinema.MotionMatching
             if (dt > 0f)
                 _measuredVelocity = (transform.position - _previousPosition) / dt;
             _previousPosition = transform.position;
+            _history.Record(Time.time, transform.position, transform.forward);
 
             AdvanceClocks(dt);
 
@@ -237,9 +251,10 @@ namespace Kinema.MotionMatching
 
             TrajectoryPredictor.Predict(
                 space, _measuredVelocity, desiredVelocity, desiredFacing,
-                _database.Schema.TrajectoryTimes, _prediction, _desiredTrajectory);
+                _database.Schema.TrajectoryTimes, _prediction, _history, Time.time, _desiredTrajectory);
 
             int currentFrame = MapCurrentFrame();
+            _lastCurrentFrame = currentFrame;
             _query.SetTrajectory(_database, _desiredTrajectory);
             _query.SetPoseFromFrame(_database, currentFrame);
 
@@ -273,7 +288,11 @@ namespace Kinema.MotionMatching
             }
 
             if (continuationCost >= float.MaxValue) return true; // current clip has nowhere to continue.
-            return result.TotalCost <= continuationCost * (1f - _jumpImprovementThreshold);
+
+            // Penalize crossing into a different clip so the character keeps its rhythm.
+            float candidateCost = result.TotalCost;
+            if (candidate.ClipIndex != _slotClipIndex[_activeSlot]) candidateCost += _clipChangeCost;
+            return candidateCost <= continuationCost * (1f - _jumpImprovementThreshold);
         }
 
         private void StartTransitionTo(int frameIndex)
@@ -413,6 +432,8 @@ namespace Kinema.MotionMatching
             _debug.SearchCount++;
 
             _database.GetTrajectory(result.FrameIndex, _candidateTrajectory);
+            _database.GetBonePositions(result.FrameIndex, _candidateBones);
+            if (_lastCurrentFrame >= 0) _database.GetBonePositions(_lastCurrentFrame, _currentBones);
         }
 
         private void DrawDebugGizmos()
@@ -420,6 +441,15 @@ namespace Kinema.MotionMatching
             CharacterSpace space = CharacterSpace.FromTransform(transform);
             DrawTrajectory(space, _debug.DesiredTrajectory, _desiredTrajectoryColor);
             DrawTrajectory(space, _debug.CandidateTrajectory, _candidateTrajectoryColor);
+            DrawBones(space, _candidateBones, _boneColor);
+        }
+
+        private static void DrawBones(CharacterSpace space, Vector3[] localBones, Color color)
+        {
+            if (localBones == null) return;
+            Gizmos.color = color;
+            for (int i = 0; i < localBones.Length; i++)
+                Gizmos.DrawWireSphere(space.ToWorldOffset3D(localBones[i]), 0.06f);
         }
 
         private static void DrawTrajectory(CharacterSpace space, TrajectorySample[] samples, Color color)

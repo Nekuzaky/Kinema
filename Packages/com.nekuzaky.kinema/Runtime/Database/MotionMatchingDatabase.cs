@@ -112,6 +112,22 @@ namespace Kinema.MotionMatching
             }
         }
 
+        /// <summary>Reconstructs the sampled bone local positions (character space, denormalized) of a baked frame.</summary>
+        public void GetBonePositions(int frameIndex, Vector3[] buffer)
+        {
+            int baseOffset = GetFeatureOffset(frameIndex);
+            int posOffset = _schema.BonePositionOffset;
+            int count = _schema.BoneCount;
+            for (int b = 0; b < count && b < buffer.Length; b++)
+            {
+                int o = posOffset + b * 3;
+                buffer[b] = new Vector3(
+                    DenormalizeValue(o, _features[baseOffset + o]),
+                    DenormalizeValue(o + 1, _features[baseOffset + o + 1]),
+                    DenormalizeValue(o + 2, _features[baseOffset + o + 2]));
+            }
+        }
+
         #endregion
 
         #region Tools and Utilities
