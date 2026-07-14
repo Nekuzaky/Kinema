@@ -3,6 +3,7 @@
 [![Unity 6000.3+](https://img.shields.io/badge/Unity-6000.3%2B-black)](https://unity.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](Packages/com.nekuzaky.kinema/LICENSE.md)
 [![UPM](https://img.shields.io/badge/UPM-com.nekuzaky.kinema-informational)](Packages/com.nekuzaky.kinema)
+[![Tests](https://github.com/Nekuzaky/Kinema/actions/workflows/tests.yml/badge.svg)](https://github.com/Nekuzaky/Kinema/actions/workflows/tests.yml)
 
 Data-driven motion matching locomotion for Unity. An offline bake pipeline turns `AnimationClip`s
 into a normalized feature database; a runtime queries it every few frames and blends to the best
@@ -71,6 +72,27 @@ it clearly beats continuing the current clip, then crossfades. See
 Packages/com.nekuzaky.kinema/   The package (Runtime, Editor, Samples~, docs, license)
 Assets/                                   Unity project shell and the imported demo
 ```
+
+## Testing
+
+`Packages/com.nekuzaky.kinema/Tests/Editor` holds EditMode tests covering the feature schema
+layout, `CharacterSpace` round-trips, the trajectory history ring buffer, the database's
+normalization/accessors, and end-to-end matcher correctness (nearest-neighbour, tag filtering,
+ignore ranges) against synthetic databases built directly through `SetBakedData` - no rig or bake
+pipeline required. Run them from Unity's Test Runner window (`Window > General > Test Runner`,
+EditMode tab) or headless:
+
+```
+Unity -batchmode -projectPath . -runTests -testPlatform EditMode -testResults results.xml
+```
+
+CI runs the same suite on every push via [GitHub Actions](.github/workflows/tests.yml)
+([game-ci/unity-test-runner](https://github.com/game-ci/unity-test-runner)); it needs a
+`UNITY_LICENSE` (or `UNITY_EMAIL`/`UNITY_PASSWORD`) repository secret to activate Unity in the
+runner - see the action's docs for obtaining one from a Unity Personal license.
+
+See [TODO.md](TODO.md) for the known gaps this doesn't yet cover (runtime/PlayMode behaviour,
+large-scale performance, standalone builds).
 
 ## Roadmap
 

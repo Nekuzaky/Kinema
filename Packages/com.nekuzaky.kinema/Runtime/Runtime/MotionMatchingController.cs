@@ -109,6 +109,9 @@ namespace Kinema.MotionMatching
         /// <summary>Ring buffer of the last matching decisions, for the snapshot debugger.</summary>
         public SearchSnapshotRecorder Snapshots => _snapshots;
 
+        /// <summary>True while a recorded snapshot is being previewed (live ticking is paused).</summary>
+        public bool IsPreviewing => _previewing;
+
         /// <summary>Applies a named weight preset baked into the database. Returns false when unknown.</summary>
         public bool SetCalibrationProfile(string profileName)
         {
@@ -195,6 +198,16 @@ namespace Kinema.MotionMatching
 
         private SearchSnapshotRecorder _snapshots;
 
+        // Live state saved while previewing a snapshot, restored by StopPreview.
+        private bool _previewing;
+        private Vector3 _liveCharacterPosition;
+        private Quaternion _liveCharacterRotation;
+        private int _liveActiveSlot;
+        private int _liveSlot0ClipIndex; private double _liveSlot0Time;
+        private int _liveSlot1ClipIndex; private double _liveSlot1Time;
+        private float _liveBlend01;
+        private bool _liveMirrored;
+
         private AnimationPlayableOutput _output;
         private float _outputWeight = 1f, _outputTarget = 1f, _outputFade = 0.2f;
         private readonly AnimationClipPlayable[] _slots = new AnimationClipPlayable[SlotCount];
@@ -245,7 +258,7 @@ namespace Kinema.MotionMatching
 
         private void Update()
         {
-            if (!_initialized) return;
+            if (!_initialized || _previewing) return;
             Tick(Time.deltaTime);
         }
 
@@ -613,6 +626,79 @@ namespace Kinema.MotionMatching
             if (_blend01 >= 1f) _blending = false;
         }
 
+        /// <summary>
+        /// Full-state rewind: replays a recorded <see cref="SearchSnapshot"/> by driving the graph
+        /// with its captured transform, slot clip/time, blend and mirror state, then forcing one
+        /// evaluation - the exact pose that was on screen at that decision reappears. Live ticking
+        /// pauses until <see cref="StopPreview"/>; call it again with a different snapshot to scrub.
+        /// </summary>
+        public void PreviewSnapshot(SearchSnapshot snapshot)
+        {
+            if (!_initialized || snapshot == null) return;
+
+            if (!_previewing)
+            {
+                _previewing = true;
+                _liveCharacterPosition = transform.position;
+                _liveCharacterRotation = transform.rotation;
+                _liveActiveSlot = _activeSlot;
+                _liveSlot0ClipIndex = _slotClipIndex[0]; _liveSlot0Time = _slotTime[0];
+                _liveSlot1ClipIndex = _slotClipIndex[1]; _liveSlot1Time = _slotTime[1];
+                _liveBlend01 = _blend01;
+                _liveMirrored = _playingMirrored;
+            }
+
+            transform.SetPositionAndRotation(snapshot.CharacterPosition, snapshot.CharacterRotation);
+            _activeSlot = snapshot.ActiveSlot;
+            ApplySlotState(0, snapshot.Slot0ClipIndex, (float)snapshot.Slot0Time);
+            ApplySlotState(1, snapshot.Slot1ClipIndex, (float)snapshot.Slot1Time);
+            _blend01 = snapshot.Blend01;
+            _blending = false; // hold the exact recorded blend weight instead of continuing to interpolate.
+            _mixer.SetInputWeight(_activeSlot, Mathf.Clamp01(_blend01));
+            _mixer.SetInputWeight(1 - _activeSlot, 1f - Mathf.Clamp01(_blend01));
+            _playingMirrored = snapshot.Mirrored;
+            _mirror?.SetMirrored(_playingMirrored);
+
+            ApplySlotTimes();
+            _graph.Evaluate(0f);
+        }
+
+        /// <summary>Restores live playback exactly where <see cref="PreviewSnapshot"/> paused it.</summary>
+        public void StopPreview()
+        {
+            if (!_previewing) return;
+            _previewing = false;
+
+            transform.SetPositionAndRotation(_liveCharacterPosition, _liveCharacterRotation);
+            _activeSlot = _liveActiveSlot;
+            ApplySlotState(0, _liveSlot0ClipIndex, (float)_liveSlot0Time);
+            ApplySlotState(1, _liveSlot1ClipIndex, (float)_liveSlot1Time);
+            _blend01 = _liveBlend01;
+            _playingMirrored = _liveMirrored;
+            _mirror?.SetMirrored(_playingMirrored);
+
+            ApplySlotTimes();
+            _graph.Evaluate(0f);
+        }
+
+        /// <summary>
+        /// Restores one slot to a recorded (clipIndex, time). Database clips are recreated exactly;
+        /// event clips (index -1) aren't recoverable from a bare index, so the slot is only
+        /// re-timed - previewing mid-event lands close but not pixel-exact.
+        /// </summary>
+        private void ApplySlotState(int slot, int clipIndex, float time)
+        {
+            if (clipIndex >= 0)
+            {
+                SetSlotClip(slot, _database.GetClip(clipIndex).Clip, clipIndex, time);
+            }
+            else if (_slots[slot].IsValid())
+            {
+                _slots[slot].SetTime(time);
+                _slotTime[slot] = time;
+            }
+        }
+
         private void ApplySlotTimes()
         {
             _slots[_activeSlot].SetTime(_slotTime[_activeSlot]);
@@ -778,7 +864,10 @@ namespace Kinema.MotionMatching
             _snapshots?.Record(
                 Time.time, result.FrameIndex, frame.ClipIndex, frame.Time,
                 result.TotalCost, _debug.ContinuationCost, jumped,
-                result.GroupCosts, _desiredTrajectory, _candidateTrajectory);
+                result.GroupCosts, _desiredTrajectory, _candidateTrajectory,
+                transform.position, transform.rotation, _activeSlot,
+                _slotClipIndex[0], _slotTime[0], _slotClipIndex[1], _slotTime[1],
+                _blend01, _playingMirrored);
         }
 
         private void DrawDebugGizmos()

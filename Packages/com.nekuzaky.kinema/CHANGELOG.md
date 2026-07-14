@@ -4,6 +4,24 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-07-14
+
+Quality-of-engineering release: real state rewind, automated tests, CI.
+
+### Added
+- Full-state snapshot rewind: `SearchSnapshot` now captures the character transform and both
+  playback slots (clip, time, blend, mirror flag), and `MotionMatchingController.PreviewSnapshot`
+  / `StopPreview` replay that exact state through the live graph - the Debug tab's history scrubber
+  gained a Preview toggle that visually rewinds the character, not just the recorded numbers.
+- EditMode test suite (`Tests/Editor`, 33 tests): feature schema layout and weight expansion,
+  `CharacterSpace` round-trips, the trajectory history ring buffer, database normalization and
+  accessors, and end-to-end matcher correctness (nearest-neighbour, tag filtering, ignore ranges)
+  against synthetic databases built directly via `SetBakedData`.
+- GitHub Actions CI (`.github/workflows/tests.yml`) running the suite on every push via
+  game-ci/unity-test-runner; needs a `UNITY_LICENSE` repository secret to activate.
+- `TODO.md`: the honest remaining-gaps list (PlayMode coverage, standalone build validation,
+  large-scale performance, mirroring visual validation, and the not-yet-started feature scope).
+
 ## [1.1.0] - 2026-07-14
 
 Tooling and demo-gameplay release.

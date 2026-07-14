@@ -402,7 +402,9 @@ namespace Kinema.MotionMatching.Editor
 
         private void DrawDebug()
         {
+            EditorGUI.BeginChangeCheck();
             _controller = (MotionMatchingController)EditorGUILayout.ObjectField("Controller", _controller, typeof(MotionMatchingController), true);
+            if (EditorGUI.EndChangeCheck() && _previewMode) TogglePreview(_previewedController, false);
 
             if (_controller == null)
             {
@@ -504,8 +506,14 @@ namespace Kinema.MotionMatching.Editor
         }
 
         [SerializeField] private int _snapshotAge;
+        [SerializeField] private bool _previewMode;
+        private MotionMatchingController _previewedController;
 
-        /// <summary>Scrub through the recorded matching decisions (0 = latest).</summary>
+        /// <summary>
+        /// Scrub through the recorded matching decisions (0 = latest). With Preview enabled, live
+        /// ticking pauses and the exact recorded pose is replayed on the character - a full visual
+        /// rewind, not just the numbers - via <see cref="MotionMatchingController.PreviewSnapshot"/>.
+        /// </summary>
         private void DrawSnapshotHistory(MotionMatchingController controller)
         {
             SearchSnapshotRecorder recorder = controller.Snapshots;
@@ -513,9 +521,17 @@ namespace Kinema.MotionMatching.Editor
 
             using (MotionMatchingStyles.BeginSection($"History — {recorder.Count} searches recorded"))
             {
-                _snapshotAge = EditorGUILayout.IntSlider("Steps back", _snapshotAge, 0, recorder.Count - 1);
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    _snapshotAge = EditorGUILayout.IntSlider("Steps back", _snapshotAge, 0, recorder.Count - 1);
+                    bool newPreview = GUILayout.Toggle(_previewMode, "Preview", EditorStyles.miniButton, GUILayout.Width(64));
+                    if (newPreview != _previewMode) TogglePreview(controller, newPreview);
+                }
+
                 SearchSnapshot s = recorder.GetByAge(_snapshotAge);
                 if (s == null) return;
+
+                if (_previewMode) controller.PreviewSnapshot(s);
 
                 MotionMatchingDatabase db = controller.Database;
                 string clipName = s.ClipIndex >= 0 && s.ClipIndex < db.ClipCount ? db.GetClip(s.ClipIndex).Name : "—";
@@ -524,6 +540,7 @@ namespace Kinema.MotionMatching.Editor
                 {
                     MotionMatchingStyles.KeyValue("At", s.Time.ToString("F2") + " s");
                     if (s.Jumped) MotionMatchingStyles.StatusPill("JUMP", MotionMatchingStyles.Accent);
+                    if (_previewMode) MotionMatchingStyles.StatusPill("REWOUND", MotionMatchingStyles.TrajectoryCandidate);
                 }
                 MotionMatchingStyles.KeyValue("Clip", $"{clipName} @ {s.ClipTime:F3}s (frame {s.SelectedFrame})");
                 MotionMatchingStyles.KeyValue("Total / Continuation",
@@ -537,6 +554,27 @@ namespace Kinema.MotionMatching.Editor
                     MotionMatchingStyles.CostBar(((FeatureGroup)gi).ToDisplayName(), s.GroupCosts[gi], max, c);
                 }
             }
+        }
+
+        private void TogglePreview(MotionMatchingController controller, bool enable)
+        {
+            _previewMode = enable;
+            if (enable)
+            {
+                _previewedController = controller;
+            }
+            else if (_previewedController != null)
+            {
+                _previewedController.StopPreview();
+                _previewedController = null;
+            }
+        }
+
+        /// <summary>Never leave the character frozen mid-rewind if the window closes or the target changes.</summary>
+        private void OnDisable()
+        {
+            if (_previewMode && _previewedController != null)
+                _previewedController.StopPreview();
         }
 
         private static void DrawSwatch(Color color)
