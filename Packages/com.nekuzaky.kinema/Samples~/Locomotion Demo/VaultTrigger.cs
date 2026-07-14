@@ -28,6 +28,9 @@ namespace Kinema.MotionMatching.Samples
         [Tooltip("Obstacle top must be below this height to vault (meters).")]
         [SerializeField, Range(0.5f, 2f)] private float _maxObstacleHeight = 1.15f;
 
+        [Tooltip("Vault automatically when eligible and moving toward the obstacle - for AI characters or hands-free traversal.")]
+        [SerializeField] private bool _autoVault;
+
         /// <summary>True while an eligible obstacle is ahead (drive a UI prompt from this).</summary>
         public bool CanVault { get; private set; }
 
@@ -62,7 +65,10 @@ namespace Kinema.MotionMatching.Samples
             if (!ProbeObstacle(out RaycastHit hit)) return;
             CanVault = true;
 
-            if (_vaultAction.WasPressedThisFrame())
+            // AI path: no input needed - vault as soon as the character is heading into the obstacle.
+            bool autoTriggered = _autoVault && Vector3.Dot(_controller.DesiredVelocity, Flatten(transform.forward)) > 0.3f;
+
+            if (autoTriggered || _vaultAction.WasPressedThisFrame())
                 Vault(hit);
         }
 
