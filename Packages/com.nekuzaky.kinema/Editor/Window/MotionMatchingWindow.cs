@@ -432,51 +432,117 @@ namespace Kinema.MotionMatching.Editor
 
         #region Tools and Utilities — Settings
 
+        [SerializeField] private bool _showRuntimeParams = true;
+        [SerializeField] private bool _showBakeParams = true;
+        private SerializedObject _controllerSerialized;
+
+        /// <summary>
+        /// The full parameter surface in one place: every runtime field of the selected controller
+        /// (live-editable in play mode) and every bake-time field of the config.
+        /// </summary>
         private void DrawSettings()
         {
-            _config = (MotionMatchingConfig)EditorGUILayout.ObjectField("Config", _config, typeof(MotionMatchingConfig), false);
-            if (_config == null)
+            // ----- Controller: all runtime parameters -----
+            _controller = (MotionMatchingController)EditorGUILayout.ObjectField("Controller", _controller, typeof(MotionMatchingController), true);
+
+            _showRuntimeParams = EditorGUILayout.BeginFoldoutHeaderGroup(_showRuntimeParams, "Runtime — Controller");
+            if (_showRuntimeParams)
             {
-                MotionMatchingStyles.HelpRow("Assign a config to edit its schema and default weights.", MessageType.Info);
-                return;
+                if (_controller == null)
+                {
+                    MotionMatchingStyles.HelpRow("Select a MotionMatchingController (scene object) to edit every runtime parameter here — search cadence, thresholds, transition mode, blend, prediction, debug colors. Editable live in play mode.", MessageType.Info);
+                }
+                else
+                {
+                    DrawAllControllerProperties();
+                    if (Application.isPlaying && _controller.IsInitialized)
+                    {
+                        using (new EditorGUILayout.HorizontalScope())
+                        {
+                            if (GUILayout.Button("Reset Weights to DB Default"))
+                                _controller.ResetWeightsToDatabaseDefault();
+                            DrawProfileButtons();
+                        }
+                    }
+                }
+            }
+            EditorGUILayout.EndFoldoutHeaderGroup();
+
+            EditorGUILayout.Space(6);
+
+            // ----- Config: all bake-time parameters -----
+            _config = (MotionMatchingConfig)EditorGUILayout.ObjectField("Config", _config, typeof(MotionMatchingConfig), false);
+
+            _showBakeParams = EditorGUILayout.BeginFoldoutHeaderGroup(_showBakeParams, "Bake — Config");
+            if (_showBakeParams)
+            {
+                if (_config == null)
+                {
+                    MotionMatchingStyles.HelpRow("Assign a config to edit schema, weights, profiles and storage.", MessageType.Info);
+                }
+                else
+                {
+                    DrawAllConfigProperties();
+                    MotionMatchingStyles.HelpRow("Schema, storage and mirroring changes alter the baked data — rebake afterwards (Bake tab).", MessageType.Warning);
+                }
+            }
+            EditorGUILayout.EndFoldoutHeaderGroup();
+        }
+
+        /// <summary>Every serialized field of the controller, grouped by its own headers, applied live.</summary>
+        private void DrawAllControllerProperties()
+        {
+            if (_controllerSerialized == null || _controllerSerialized.targetObject != _controller)
+                _controllerSerialized = new SerializedObject(_controller);
+
+            SerializedObject so = _controllerSerialized;
+            so.Update();
+
+            EditorGUI.BeginChangeCheck();
+            SerializedProperty it = so.GetIterator();
+            bool enterChildren = true;
+            while (it.NextVisible(enterChildren))
+            {
+                enterChildren = false;
+                if (it.name == "m_Script") continue;
+                EditorGUILayout.PropertyField(it, true);
             }
 
+            if (EditorGUI.EndChangeCheck())
+            {
+                so.ApplyModifiedProperties();
+                if (Application.isPlaying && _controller.IsInitialized)
+                    _controller.NotifySerializedFieldsChanged(); // weights/acceleration take effect immediately.
+            }
+        }
+
+        /// <summary>Every serialized field of the config (rig, clips, schema, weights, tags, profiles, storage).</summary>
+        private void DrawAllConfigProperties()
+        {
             SerializedObject so = GetConfigSerialized();
             so.Update();
 
-            using (MotionMatchingStyles.BeginSection("Default Weights"))
+            SerializedProperty it = so.GetIterator();
+            bool enterChildren = true;
+            while (it.NextVisible(enterChildren))
             {
-                EditorGUILayout.PropertyField(so.FindProperty("_defaultWeights"), true);
-                MotionMatchingStyles.HelpRow("Weights are normalized-space multipliers per feature group. Baked into the database as its default; a controller can override them at runtime.", MessageType.None);
-            }
-
-            using (MotionMatchingStyles.BeginSection("Calibration Profiles"))
-            {
-                EditorGUILayout.PropertyField(so.FindProperty("_calibrationProfiles"), true);
-                MotionMatchingStyles.HelpRow("Named weight presets baked into the database. Apply at runtime with controller.SetCalibrationProfile(name).", MessageType.None);
-            }
-
-            using (MotionMatchingStyles.BeginSection("Storage & Variants"))
-            {
-                EditorGUILayout.PropertyField(so.FindProperty("_halfPrecision"));
-                EditorGUILayout.PropertyField(so.FindProperty("_generateMirroredVariants"));
-            }
-
-            using (MotionMatchingStyles.BeginSection("Feature Schema"))
-            {
-                SerializedProperty schema = so.FindProperty("_schema");
-                EditorGUILayout.PropertyField(schema.FindPropertyRelative("TrajectoryTimes"), true);
-                EditorGUILayout.PropertyField(schema.FindPropertyRelative("BoneNames"), true);
-                EditorGUILayout.PropertyField(schema.FindPropertyRelative("BoneWeights"), true);
-                MotionMatchingStyles.HelpRow("Changing the schema changes the feature layout — rebake the database afterwards.", MessageType.Warning);
+                enterChildren = false;
+                if (it.name == "m_Script") continue;
+                EditorGUILayout.PropertyField(it, true);
             }
 
             so.ApplyModifiedProperties();
+        }
 
-            if (_controller != null && Application.isPlaying)
-                using (MotionMatchingStyles.BeginSection("Live Controller"))
-                    if (GUILayout.Button("Apply Default Weights to Controller"))
-                        _controller.Weights = _config.DefaultWeights;
+        /// <summary>One-click calibration profile buttons when the database ships presets.</summary>
+        private void DrawProfileButtons()
+        {
+            MotionMatchingDatabase db = _controller.Database;
+            if (db == null || db.CalibrationProfiles.Length == 0) return;
+
+            foreach (CalibrationProfile profile in db.CalibrationProfiles)
+                if (GUILayout.Button($"Profile: {profile.Name}"))
+                    _controller.SetCalibrationProfile(profile.Name);
         }
 
         #endregion

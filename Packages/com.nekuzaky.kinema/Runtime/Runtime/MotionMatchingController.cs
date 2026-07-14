@@ -303,6 +303,17 @@ namespace Kinema.MotionMatching
         }
 
         /// <summary>
+        /// Re-syncs runtime state after serialized fields were edited externally (editor window,
+        /// inspector during play): rebuilds the weight table and propagates the acceleration mode.
+        /// </summary>
+        public void NotifySerializedFieldsChanged()
+        {
+            if (_matcher == null) return;
+            _matcher.UpdateWeights(_weights);
+            _matcher.Acceleration = _searchAcceleration;
+        }
+
+        /// <summary>
         /// Plays a triggered action clip, warping the root so the event's contact moment lands on
         /// the given target. Matching is suspended until the clip finishes, then resumes with an
         /// immediate search (the inertializer absorbs the seam).
