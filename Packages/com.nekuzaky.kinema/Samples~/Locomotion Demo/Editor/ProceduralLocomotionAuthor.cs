@@ -54,17 +54,18 @@ namespace Kinema.MotionMatching.Samples.Editor
             {
                 Transform root = instance.transform;
                 var bones = new Dictionary<string, BoneRef>();
-                foreach (string key in new[] { "LeftUpLeg", "LeftLeg", "RightUpLeg", "RightLeg",
-                                               "LeftArm", "LeftForeArm", "RightArm", "RightForeArm", "Hips" })
+                foreach (string key in new[] { "LeftUpLeg", "LeftLeg", "LeftFoot", "RightUpLeg", "RightLeg", "RightFoot",
+                                               "LeftArm", "LeftForeArm", "RightArm", "RightForeArm", "Hips", "Spine" })
                     bones[key] = FindBone(root, key);
 
+                // Human cadence: one full leg cycle = two steps. Walk ~1.7 steps/s, run ~3 steps/s.
                 var specs = new[]
                 {
-                    new ClipSpec { Name = "Loco_Idle",      Length = 2.0f, Cycles = 1, Forward = 0.0f, YawRate = 0f,   LegAmp = 1.5f, KneeAmp = 2f,  ArmAmp = 2f,  Bob = 0.006f },
-                    new ClipSpec { Name = "Loco_WalkFwd",   Length = 1.0f, Cycles = 2, Forward = 1.5f, YawRate = 0f,   LegAmp = 22f,  KneeAmp = 26f, ArmAmp = 18f, Bob = 0.03f },
-                    new ClipSpec { Name = "Loco_RunFwd",    Length = 0.7f, Cycles = 2, Forward = 4.2f, YawRate = 0f,   LegAmp = 32f,  KneeAmp = 48f, ArmAmp = 30f, Bob = 0.05f },
-                    new ClipSpec { Name = "Loco_TurnLeft",  Length = 1.0f, Cycles = 2, Forward = 1.3f, YawRate = 75f,  LegAmp = 20f,  KneeAmp = 24f, ArmAmp = 16f, Bob = 0.03f },
-                    new ClipSpec { Name = "Loco_TurnRight", Length = 1.0f, Cycles = 2, Forward = 1.3f, YawRate = -75f, LegAmp = 20f,  KneeAmp = 24f, ArmAmp = 16f, Bob = 0.03f },
+                    new ClipSpec { Name = "Loco_Idle",      Length = 2.0f,  Cycles = 1, Forward = 0.0f, YawRate = 0f,   LegAmp = 1.5f, KneeAmp = 2f,  ArmAmp = 2f,  Bob = 0.006f },
+                    new ClipSpec { Name = "Loco_WalkFwd",   Length = 1.15f, Cycles = 1, Forward = 1.4f, YawRate = 0f,   LegAmp = 26f,  KneeAmp = 32f, ArmAmp = 14f, Bob = 0.025f },
+                    new ClipSpec { Name = "Loco_RunFwd",    Length = 0.7f,  Cycles = 1, Forward = 4.0f, YawRate = 0f,   LegAmp = 38f,  KneeAmp = 55f, ArmAmp = 28f, Bob = 0.045f },
+                    new ClipSpec { Name = "Loco_TurnLeft",  Length = 1.15f, Cycles = 1, Forward = 1.2f, YawRate = 75f,  LegAmp = 24f,  KneeAmp = 30f, ArmAmp = 12f, Bob = 0.025f },
+                    new ClipSpec { Name = "Loco_TurnRight", Length = 1.15f, Cycles = 1, Forward = 1.2f, YawRate = -75f, LegAmp = 24f,  KneeAmp = 30f, ArmAmp = 12f, Bob = 0.025f },
                 };
 
                 var clips = new List<AnimationClip>();
@@ -143,40 +144,86 @@ namespace Kinema.MotionMatching.Samples.Editor
 
         private static void BuildLimbCurves(AnimationClip clip, ClipSpec spec, Dictionary<string, BoneRef> bones, int frames, float dt)
         {
-            var upLegL = new QuatCurves(); var legL = new QuatCurves();
-            var upLegR = new QuatCurves(); var legR = new QuatCurves();
+            var upLegL = new QuatCurves(); var legL = new QuatCurves(); var footL = new QuatCurves();
+            var upLegR = new QuatCurves(); var legR = new QuatCurves(); var footR = new QuatCurves();
             var armL = new QuatCurves(); var foreArmL = new QuatCurves();
             var armR = new QuatCurves(); var foreArmR = new QuatCurves();
+            var hipsRot = new QuatCurves(); var spineRot = new QuatCurves();
             var hipsPosY = new AnimationCurve();
 
             float omega = 2f * Mathf.PI * spec.Cycles;
+            bool moving = Mathf.Abs(spec.Forward) > 0.1f;
+            float lean = moving ? Mathf.Lerp(3f, 9f, Mathf.InverseLerp(1f, 4.5f, Mathf.Abs(spec.Forward))) : 0f;
 
             for (int f = 0; f <= frames; f++)
             {
                 float u = frames > 0 ? (float)f / frames : 0f; // 0..1 across the clip
+                float t = f * dt;
                 float phaseL = omega * u;
                 float phaseR = phaseL + Mathf.PI;
 
-                AddSwing(upLegL, bones["LeftUpLeg"], spec.LegAmp * Mathf.Sin(phaseL), f * dt);
-                AddSwing(upLegR, bones["RightUpLeg"], spec.LegAmp * Mathf.Sin(phaseR), f * dt);
-                AddSwing(legL, bones["LeftLeg"], -spec.KneeAmp * Mathf.Clamp01(Mathf.Sin(phaseL + 2f)), f * dt);
-                AddSwing(legR, bones["RightLeg"], -spec.KneeAmp * Mathf.Clamp01(Mathf.Sin(phaseR + 2f)), f * dt);
+                AddLegChain(upLegL, legL, footL, bones["LeftUpLeg"], bones["LeftLeg"], bones["LeftFoot"],
+                    spec.LegAmp * Mathf.Sin(phaseL), -spec.KneeAmp * Mathf.Clamp01(Mathf.Sin(phaseL + 2f)), t);
+                AddLegChain(upLegR, legR, footR, bones["RightUpLeg"], bones["RightLeg"], bones["RightFoot"],
+                    spec.LegAmp * Mathf.Sin(phaseR), -spec.KneeAmp * Mathf.Clamp01(Mathf.Sin(phaseR + 2f)), t);
 
                 // Arms: lowered from the T-pose to the sides, then swinging opposite to the same-side leg.
-                AddArmChain(armL, foreArmL, bones["LeftArm"], bones["LeftForeArm"],
-                    spec.ArmAmp * Mathf.Sin(phaseR), f * dt);
-                AddArmChain(armR, foreArmR, bones["RightArm"], bones["RightForeArm"],
-                    spec.ArmAmp * Mathf.Sin(phaseL), f * dt);
+                AddArmChain(armL, foreArmL, bones["LeftArm"], bones["LeftForeArm"], spec.ArmAmp * Mathf.Sin(phaseR), t);
+                AddArmChain(armR, foreArmR, bones["RightArm"], bones["RightForeArm"], spec.ArmAmp * Mathf.Sin(phaseL), t);
 
+                // Pelvis: vertical bob (two per cycle) plus a slight yaw sway following the stride.
                 if (bones["Hips"].Valid)
-                    hipsPosY.AddKey(f * dt, bones["Hips"].RestLocalPos.y + spec.Bob * Mathf.Sin(2f * phaseL));
+                {
+                    hipsPosY.AddKey(t, bones["Hips"].RestLocalPos.y + spec.Bob * Mathf.Sin(2f * phaseL));
+                    float sway = moving ? 5f * Mathf.Sin(phaseL) : 0f;
+                    Quaternion hipsWorld = Quaternion.AngleAxis(sway, Vector3.up) * bones["Hips"].RestWorld;
+                    hipsRot.Add(t, Quaternion.Inverse(bones["Hips"].ParentRestWorld) * hipsWorld);
+                }
+
+                // Torso: constant forward lean scaled by speed, counter-swaying the pelvis a touch.
+                if (bones["Spine"].Valid)
+                {
+                    float counterSway = moving ? -3f * Mathf.Sin(phaseL) : 0f;
+                    Quaternion spineWorld = Quaternion.AngleAxis(lean, Vector3.right)
+                                          * Quaternion.AngleAxis(counterSway, Vector3.up)
+                                          * bones["Spine"].RestWorld;
+                    spineRot.Add(t, Quaternion.Inverse(bones["Spine"].ParentRestWorld) * spineWorld);
+                }
             }
 
             upLegL.Apply(clip, bones["LeftUpLeg"].Path); upLegR.Apply(clip, bones["RightUpLeg"].Path);
             legL.Apply(clip, bones["LeftLeg"].Path); legR.Apply(clip, bones["RightLeg"].Path);
+            footL.Apply(clip, bones["LeftFoot"].Path); footR.Apply(clip, bones["RightFoot"].Path);
             armL.Apply(clip, bones["LeftArm"].Path); armR.Apply(clip, bones["RightArm"].Path);
             foreArmL.Apply(clip, bones["LeftForeArm"].Path); foreArmR.Apply(clip, bones["RightForeArm"].Path);
-            if (bones["Hips"].Valid) SetCurve(clip, bones["Hips"].Path, "m_LocalPosition.y", hipsPosY);
+            if (bones["Hips"].Valid)
+            {
+                SetCurve(clip, bones["Hips"].Path, "m_LocalPosition.y", hipsPosY);
+                hipsRot.Apply(clip, bones["Hips"].Path);
+            }
+            if (bones["Spine"].Valid) spineRot.Apply(clip, bones["Spine"].Path);
+        }
+
+        /// <summary>
+        /// Leg chain with proper composition: the lower leg's local rotation is computed against the
+        /// upper leg's NEW world rotation, and the foot counter-rotates to stay roughly level with
+        /// the ground instead of following the shin's tilt (kills the toe-dragging look).
+        /// </summary>
+        private static void AddLegChain(QuatCurves upCurves, QuatCurves lowCurves, QuatCurves footCurves,
+            BoneRef up, BoneRef low, BoneRef foot, float hipSwingDeg, float kneeDeg, float time)
+        {
+            if (!up.Valid || !low.Valid) return;
+
+            Quaternion upWorld = Quaternion.AngleAxis(hipSwingDeg, Vector3.right) * up.RestWorld;
+            upCurves.Add(time, Quaternion.Inverse(up.ParentRestWorld) * upWorld);
+
+            Quaternion lowWorld = Quaternion.AngleAxis(hipSwingDeg + kneeDeg, Vector3.right) * low.RestWorld;
+            lowCurves.Add(time, Quaternion.Inverse(upWorld) * lowWorld);
+
+            if (!foot.Valid) return;
+            // Foot: mostly level, with a light heel-strike/toe-off pitch following the hip swing.
+            Quaternion footWorld = Quaternion.AngleAxis(hipSwingDeg * 0.25f, Vector3.right) * foot.RestWorld;
+            footCurves.Add(time, Quaternion.Inverse(lowWorld) * footWorld);
         }
 
         // Rotates a bone about the character's world +X (flexion) by angleDeg, expressed as a local rotation.

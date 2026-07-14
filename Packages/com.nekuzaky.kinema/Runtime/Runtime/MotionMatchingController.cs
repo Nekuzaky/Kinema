@@ -148,7 +148,7 @@ namespace Kinema.MotionMatching
             _outputFade = Mathf.Max(0.01f, fadeTime);
         }
         public int CurrentClipIndex => _initialized ? _slotClipIndex[_activeSlot] : -1;
-        public float CurrentClipTime => _initialized ? (float)_slotTime[_activeSlot] : 0f;
+        public float CurrentClipTime => _initialized ? LocalClipTime(_slotClipIndex[_activeSlot], _slotTime[_activeSlot]) : 0f;
 
         public FeatureWeights Weights
         {
@@ -484,14 +484,18 @@ namespace Kinema.MotionMatching
             AnimationEvent[] events = clip.events;
             if (events == null || events.Length == 0) return;
 
-            if (to >= from)
+            // The slot clock is monotonic; map to clip-local time before matching event times.
+            float fromLocal = LocalClipTime(clipIndex, from);
+            float toLocal = LocalClipTime(clipIndex, to);
+
+            if (toLocal >= fromLocal)
             {
-                DispatchEventsInRange(events, from, to);
+                DispatchEventsInRange(events, fromLocal, toLocal);
             }
-            else // looped this frame
+            else // crossed the loop point this frame
             {
-                DispatchEventsInRange(events, from, clip.length + 1e-4f);
-                DispatchEventsInRange(events, -1e-4f, to);
+                DispatchEventsInRange(events, fromLocal, clip.length + 1e-4f);
+                DispatchEventsInRange(events, -1e-4f, toLocal);
             }
         }
 
@@ -546,7 +550,8 @@ namespace Kinema.MotionMatching
             // Candidate is essentially "where we already are" -> keep playing, no visible cut.
             if (candidate.ClipIndex == _slotClipIndex[_activeSlot])
             {
-                float dt = Mathf.Abs(candidate.Time - (float)_slotTime[_activeSlot]);
+                float local = LocalClipTime(candidate.ClipIndex, _slotTime[_activeSlot]);
+                float dt = Mathf.Abs(candidate.Time - local);
                 if (dt <= _continuityWindow) return false;
             }
 
@@ -699,17 +704,30 @@ namespace Kinema.MotionMatching
             _initialized = false;
         }
 
+        /// <summary>
+        /// Advances a slot clock. Looping clips keep a MONOTONIC time: wrapping it manually would
+        /// make the Animator see a length-to-zero jump and emit a negative root-motion delta (a
+        /// backward teleport every loop). Unity's own loopTime handling produces continuous root
+        /// motion from a growing time. Non-looping and event clips clamp at their end.
+        /// </summary>
         private double WrapTime(int clipIndex, double time)
         {
-            // External event clip: clamp, never wrap.
             if (clipIndex < 0)
-                return System.Math.Min(time, _eventClipLength);
+                return System.Math.Min(time, _eventClipLength); // external event clip
 
-            float length = _database.GetClip(clipIndex).Length;
-            if (length <= 0f) return 0d;
-            if (time >= length) time -= length * System.Math.Floor(time / length);
-            else if (time < 0d) time += length * (System.Math.Floor(-time / length) + 1d);
-            return time;
+            MotionClipEntry clip = _database.GetClip(clipIndex);
+            if (clip.Length <= 0f) return 0d;
+            if (clip.IsLooping) return System.Math.Max(time, 0d);
+            return System.Math.Min(time, clip.Length);
+        }
+
+        /// <summary>Clip-local time in [0, length] regardless of the monotonic slot clock.</summary>
+        private float LocalClipTime(int clipIndex, double time)
+        {
+            if (clipIndex < 0) return (float)time;
+            MotionClipEntry clip = _database.GetClip(clipIndex);
+            if (clip.Length <= 0f) return 0f;
+            return clip.IsLooping ? Mathf.Repeat((float)time, clip.Length) : Mathf.Min((float)time, clip.Length);
         }
 
         private int MapCurrentFrame()
@@ -717,7 +735,7 @@ namespace Kinema.MotionMatching
             int clipIndex = _slotClipIndex[_activeSlot];
             if (clipIndex < 0) return _lastCurrentFrame >= 0 ? _lastCurrentFrame : 0; // event clip: keep last known.
 
-            int frame = _database.MapClipTimeToFrame(clipIndex, (float)_slotTime[_activeSlot]);
+            int frame = _database.MapClipTimeToFrame(clipIndex, LocalClipTime(clipIndex, _slotTime[_activeSlot]));
             return _playingMirrored ? _database.GetMirroredTwin(frame) : frame;
         }
 
