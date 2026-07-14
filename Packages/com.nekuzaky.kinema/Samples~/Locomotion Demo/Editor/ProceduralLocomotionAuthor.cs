@@ -25,6 +25,7 @@ namespace Kinema.MotionMatching.Samples.Editor
             public Quaternion ParentRestWorld;
             public Quaternion RestLocal;
             public Vector3 RestLocalPos;
+            public Vector3 RestWorldPos;
             public bool Valid;
         }
 
@@ -161,11 +162,11 @@ namespace Kinema.MotionMatching.Samples.Editor
                 AddSwing(legL, bones["LeftLeg"], -spec.KneeAmp * Mathf.Clamp01(Mathf.Sin(phaseL + 2f)), f * dt);
                 AddSwing(legR, bones["RightLeg"], -spec.KneeAmp * Mathf.Clamp01(Mathf.Sin(phaseR + 2f)), f * dt);
 
-                // Arms swing opposite to the same-side leg.
-                AddSwing(armL, bones["LeftArm"], spec.ArmAmp * Mathf.Sin(phaseR), f * dt);
-                AddSwing(armR, bones["RightArm"], spec.ArmAmp * Mathf.Sin(phaseL), f * dt);
-                AddSwing(foreArmL, bones["LeftForeArm"], -18f + spec.ArmAmp * 0.4f * Mathf.Sin(phaseR), f * dt);
-                AddSwing(foreArmR, bones["RightForeArm"], -18f + spec.ArmAmp * 0.4f * Mathf.Sin(phaseL), f * dt);
+                // Arms: lowered from the T-pose to the sides, then swinging opposite to the same-side leg.
+                AddArmChain(armL, foreArmL, bones["LeftArm"], bones["LeftForeArm"],
+                    spec.ArmAmp * Mathf.Sin(phaseR), f * dt);
+                AddArmChain(armR, foreArmR, bones["RightArm"], bones["RightForeArm"],
+                    spec.ArmAmp * Mathf.Sin(phaseL), f * dt);
 
                 if (bones["Hips"].Valid)
                     hipsPosY.AddKey(f * dt, bones["Hips"].RestLocalPos.y + spec.Bob * Mathf.Sin(2f * phaseL));
@@ -187,6 +188,31 @@ namespace Kinema.MotionMatching.Samples.Editor
             curves.Add(time, local);
         }
 
+        private const float ArmDropDegrees = 72f;   // T-pose -> arms by the sides
+        private const float ElbowBendDegrees = 14f; // slight natural elbow bend
+
+        /// <summary>
+        /// Arms need two corrections the legs don't: a constant drop from the T-pose to the body's
+        /// sides (roll about the forward axis, direction from the shoulder's rest side), and a
+        /// forearm whose local rotation is computed against the arm's NEW world rotation - not the
+        /// rest pose - so the elbow follows the lowered shoulder.
+        /// </summary>
+        private static void AddArmChain(QuatCurves armCurves, QuatCurves foreCurves,
+            BoneRef arm, BoneRef fore, float swingDeg, float time)
+        {
+            if (!arm.Valid) return;
+
+            float side = arm.RestWorldPos.x >= 0f ? -1f : 1f; // rotate toward -Y whichever side the arm is on
+            Quaternion drop = Quaternion.AngleAxis(side * ArmDropDegrees, Vector3.forward);
+
+            Quaternion armWorld = Quaternion.AngleAxis(swingDeg, Vector3.right) * drop * arm.RestWorld;
+            armCurves.Add(time, Quaternion.Inverse(arm.ParentRestWorld) * armWorld);
+
+            if (!fore.Valid) return;
+            Quaternion foreWorld = Quaternion.AngleAxis(swingDeg * 0.4f - ElbowBendDegrees, Vector3.right) * drop * fore.RestWorld;
+            foreCurves.Add(time, Quaternion.Inverse(armWorld) * foreWorld);
+        }
+
         private static BoneRef FindBone(Transform root, string suffix)
         {
             string lower = suffix.ToLowerInvariant();
@@ -201,6 +227,7 @@ namespace Kinema.MotionMatching.Samples.Editor
                     ParentRestWorld = parent.rotation,
                     RestLocal = t.localRotation,
                     RestLocalPos = t.localPosition,
+                    RestWorldPos = t.position,
                     Valid = true
                 };
             }

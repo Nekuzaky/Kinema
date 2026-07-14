@@ -29,6 +29,16 @@ namespace Kinema.MotionMatching.Samples
 
         #region Unity API
 
+        private void Start()
+        {
+            // Safety net: if the serialized reference was lost, follow the matched character.
+            if (_target == null)
+            {
+                var controller = FindFirstObjectByType<MotionMatchingController>();
+                if (controller != null) _target = controller.transform;
+            }
+        }
+
         private void LateUpdate()
         {
             if (_target == null) return;
