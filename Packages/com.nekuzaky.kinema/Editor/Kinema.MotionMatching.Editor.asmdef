@@ -2,7 +2,8 @@
     "name": "Kinema.MotionMatching.Editor",
     "rootNamespace": "Kinema.MotionMatching.Editor",
     "references": [
-        "Kinema.MotionMatching.Runtime"
+        "Kinema.MotionMatching.Runtime",
+        "Unity.Burst"
     ],
     "includePlatforms": [
         "Editor"

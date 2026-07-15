@@ -4,6 +4,39 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.0] - 2026-07-15
+
+### Added
+- `Tools > Kinema > Benchmark Search`: measures the real Burst search and reports mean/median/p99
+  per search, plus the number a game actually asks - how many characters can search at 10 Hz inside
+  a 60 fps frame. Queries are real database rows with noise, not random vectors, because the
+  branch-and-bound early-out makes a plausible query and a nonsense one take different paths.
+  Synthetic clustered databases (5k to 400k frames) chart the growth curve past whatever is baked
+  locally, and the baked database is measured twice - first and last - so an order-dependent result
+  is visible rather than believed.
+
+### Measured (Ryzen, 20 workers, Burst on, 44 dims)
+
+| database | search | p99 | characters @10 Hz in a 60 fps frame |
+|---|---|---|---|
+| demo pack, 3,699 frames | 82 us | 128 us | ~780 |
+| synthetic 25,000 | 337 us | 459 us | ~218 |
+| synthetic 100,000 | 1,194 us | 1,422 us | ~70 |
+| synthetic 100,000, KD-tree | 267 us | 450 us | ~222 |
+| synthetic 400,000 | 4,694 us | 5,290 us | ~18 |
+| synthetic 400,000, KD-tree | 942 us | 1,680 us | ~59 |
+
+The linear scan grows linearly, as expected, and the KD-tree earns its keep past ~100k frames
+(3x). Below ~25k frames the linear scan wins on both latency and simplicity - which is where the
+demo, and most projects, live.
+
+### Notes
+- The first version of this benchmark was wrong and said so under testing: whichever database was
+  measured first reported ~10x its true cost, because Burst compiles asynchronously in the editor
+  and the early samples ran as managed IL. Reordering the runs moved the slow result with the
+  order. Fixed by forcing synchronous Burst compilation; the first/last re-measurement of the same
+  database now agrees within 8%, and that check ships with the benchmark.
+
 ## [1.13.0] - 2026-07-15
 
 Core matching release: six improvements to the matcher itself, the first since v1.4.
