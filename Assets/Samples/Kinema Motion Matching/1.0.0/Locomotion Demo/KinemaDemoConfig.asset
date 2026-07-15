@@ -34,7 +34,7 @@ MonoBehaviour:
     BonePosition: 1
     BoneVelocity: 0.6
     RootVelocity: 0.8
-  _bakeFrameRate: 30
+  _bakeFrameRate: 31
   _rigPrefab: {fileID: 919132149155446097, guid: caba4f245863d7744877e6c55fb98745, type: 3}
   _clips:
   - {fileID: 7400000, guid: d4188f64d5580d640b0b10c7ca55e5ad, type: 2}

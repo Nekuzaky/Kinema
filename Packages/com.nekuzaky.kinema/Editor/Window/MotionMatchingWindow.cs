@@ -12,10 +12,11 @@ namespace Kinema.MotionMatching.Editor
     {
         #region Private and Protected
 
-        private enum Tab { Overview, Database, Bake, Tags, Debug, Settings }
-        private static readonly string[] TabNames = { "Overview", "Database", "Bake", "Tags", "Debug", "Settings" };
+        private enum Tab { Overview, Database, Bake, Tags, Debug, Analysis, Settings }
+        private static readonly string[] TabNames = { "Overview", "Database", "Bake", "Tags", "Debug", "Analysis", "Settings" };
 
         private readonly TagTimelineDrawer _tagDrawer = new TagTimelineDrawer();
+        private readonly AnalysisTabDrawer _analysisDrawer = new AnalysisTabDrawer();
 
         [SerializeField] private MotionMatchingConfig _config;
         [SerializeField] private MotionMatchingDatabase _database;
@@ -56,8 +57,8 @@ namespace Kinema.MotionMatching.Editor
 
         private void OnInspectorUpdate()
         {
-            // Keep the Debug tab live during play without hammering repaint elsewhere.
-            if (_tab == Tab.Debug && Application.isPlaying)
+            // Keep the live tabs updating during play without hammering repaint elsewhere.
+            if ((_tab == Tab.Debug || _tab == Tab.Analysis) && Application.isPlaying)
                 Repaint();
         }
 
@@ -75,6 +76,7 @@ namespace Kinema.MotionMatching.Editor
                 case Tab.Bake: DrawBake(); break;
                 case Tab.Tags: DrawTags(); break;
                 case Tab.Debug: DrawDebug(); break;
+                case Tab.Analysis: DrawAnalysis(); break;
                 case Tab.Settings: DrawSettings(); break;
             }
             EditorGUILayout.EndScrollView();
@@ -582,6 +584,16 @@ namespace Kinema.MotionMatching.Editor
             Rect r = GUILayoutUtility.GetRect(12, 12, GUILayout.Width(12));
             EditorGUI.DrawRect(r, color);
             GUILayout.Space(4);
+        }
+
+        #endregion
+
+        #region Tools and Utilities — Analysis
+
+        private void DrawAnalysis()
+        {
+            _controller = (MotionMatchingController)EditorGUILayout.ObjectField("Controller", _controller, typeof(MotionMatchingController), true);
+            _analysisDrawer.Draw(_controller);
         }
 
         #endregion

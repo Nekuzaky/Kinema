@@ -9,6 +9,50 @@ namespace Kinema.MotionMatching.Tests
     /// </summary>
     internal static class TestDatabaseFactory
     {
+        /// <summary>
+        /// Multi-clip database with zeroed features: for tests that only care about frame/clip
+        /// bookkeeping (coverage, metadata) rather than matching values.
+        /// </summary>
+        public static MotionMatchingDatabase Create(int frameCount, int[] clipFrameCounts)
+        {
+            var schema = new FeatureSchema
+            {
+                TrajectoryTimes = new[] { 0.2f },
+                BoneNames = new[] { "Foot" },
+                BoneWeights = new[] { 1f }
+            };
+            int dim = schema.Dimension;
+
+            var mean = new float[dim];
+            var std = new float[dim];
+            for (int i = 0; i < dim; i++) std[i] = 1f;
+
+            var features = new float[frameCount * dim];
+            var frames = new MotionFrameInfo[frameCount];
+            var clips = new MotionClipEntry[clipFrameCounts.Length];
+
+            int cursor = 0;
+            for (int c = 0; c < clipFrameCounts.Length; c++)
+            {
+                clips[c] = new MotionClipEntry
+                {
+                    Clip = null,
+                    Name = $"Clip{c}",
+                    StartFrame = cursor,
+                    FrameCount = clipFrameCounts[c],
+                    Length = clipFrameCounts[c] * 0.1f,
+                    IsLooping = true
+                };
+                for (int f = 0; f < clipFrameCounts[c] && cursor < frameCount; f++, cursor++)
+                    frames[cursor] = new MotionFrameInfo(c, f * 0.1f);
+            }
+
+            var db = ScriptableObject.CreateInstance<MotionMatchingDatabase>();
+            db.SetBakedData(schema, features, mean, std, frames, clips,
+                FeatureWeights.Default, bakeFrameRate: 10, bakeDateUtc: "test", totalDuration: frameCount * 0.1f);
+            return db;
+        }
+
         /// <summary>1 trajectory point, 1 bone -> 12 dimensions. Three frames with distinct trajectory positions.</summary>
         public static MotionMatchingDatabase CreateSimple(out FeatureSchema schema)
         {

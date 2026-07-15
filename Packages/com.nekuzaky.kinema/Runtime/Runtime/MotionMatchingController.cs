@@ -112,6 +112,25 @@ namespace Kinema.MotionMatching
         /// <summary>True while a recorded snapshot is being previewed (live ticking is paused).</summary>
         public bool IsPreviewing => _previewing;
 
+        /// <summary>
+        /// Selection count per database frame, accumulated since the last <see cref="ResetTelemetry"/>.
+        /// Feed it to <see cref="CoverageReport"/> to see which data the matcher actually uses.
+        /// </summary>
+        public int[] FrameUsage => _frameUsage;
+
+        public int TotalSearches => _totalSearches;
+        public int TotalJumps => _totalJumps;
+        public float AverageCost => _totalSearches > 0 ? _costSum / _totalSearches : 0f;
+
+        /// <summary>Clears coverage counts and cost accumulators.</summary>
+        public void ResetTelemetry()
+        {
+            if (_frameUsage != null) System.Array.Clear(_frameUsage, 0, _frameUsage.Length);
+            _totalSearches = 0;
+            _totalJumps = 0;
+            _costSum = 0f;
+        }
+
         /// <summary>Applies a named weight preset baked into the database. Returns false when unknown.</summary>
         public bool SetCalibrationProfile(string profileName)
         {
@@ -197,6 +216,11 @@ namespace Kinema.MotionMatching
         private float _eventClipLength;
 
         private SearchSnapshotRecorder _snapshots;
+
+        // Coverage telemetry: which frames the matcher actually reaches for.
+        private int[] _frameUsage;
+        private int _totalSearches, _totalJumps;
+        private float _costSum;
 
         // Live state saved while previewing a snapshot, restored by StopPreview.
         private bool _previewing;
@@ -298,6 +322,8 @@ namespace Kinema.MotionMatching
             _candidateBones = new Vector3[boneCount];
             _history = new TrajectoryHistory(128);
             _snapshots = new SearchSnapshotRecorder(240, FeatureGroupExtensions.Count, _database.Schema.TrajectoryPointCount);
+            _frameUsage = new int[_database.FrameCount];
+            _totalSearches = 0; _totalJumps = 0; _costSum = 0f;
             _debug.DesiredTrajectory = _desiredTrajectory;
             _debug.CandidateTrajectory = _candidateTrajectory;
             _debug.Clear();
@@ -856,6 +882,13 @@ namespace Kinema.MotionMatching
             _debug.CopyGroupCosts(result.GroupCosts);
             _debug.DidJump = jumped;
             _debug.SearchCount++;
+
+            // Coverage: count what the matcher actually picked.
+            if (_frameUsage != null && result.FrameIndex >= 0 && result.FrameIndex < _frameUsage.Length)
+                _frameUsage[result.FrameIndex]++;
+            _totalSearches++;
+            _costSum += result.TotalCost;
+            if (jumped) _totalJumps++;
 
             _database.GetTrajectory(result.FrameIndex, _candidateTrajectory);
             _database.GetBonePositions(result.FrameIndex, _candidateBones);

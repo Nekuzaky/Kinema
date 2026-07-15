@@ -4,6 +4,28 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-07-15
+
+Instrumentation and authoring release: measure the system instead of eyeballing it.
+
+### Added
+- Session recording and deterministic replay: `SessionRecorder` captures a play session's
+  locomotion intent frame by frame into a `SessionRecording` asset, and
+  `ReplayLocomotionProvider` feeds that identical intent back through the controller as an ordinary
+  `ILocomotionProvider`. With Force Recorded Timestep the recorded per-frame delta drives
+  `Time.captureDeltaTime`, so matching decisions reproduce exactly - two tuning setups can finally
+  be compared on the same performance rather than on two different human runs.
+- Foot-slide measurement (`MotionQualityProbe`): while the baked contacts flag a foot grounded, any
+  world-space travel is slide - the metric animation teams judge locomotion by. Kinema can measure
+  it precisely because contacts are baked data rather than a guess. Also reports jump rate (flicker)
+  and average/peak matching cost.
+- Database coverage analysis (`CoverageReport`, controller frame-usage telemetry): which frames the
+  matcher actually reaches for, how much of the database is dead weight, and which clips are never
+  selected at all - wasted memory and mocap budget made visible.
+- Analysis tab: quality stat cards with plain-English diagnosis, per-clip coverage bars with dead
+  clips flagged, and record/save/replay controls in one place.
+- Six coverage tests (39 total, all passing).
+
 ## [1.2.1] - 2026-07-14
 
 ### Fixed
