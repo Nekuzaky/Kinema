@@ -105,3 +105,11 @@ InitTestScene*.unity*
 
 # Auto-generated scenes by play mode tests
 /[Aa]ssets/[Ii]nit[Tt]est[Ss]cene*.unity*
+
+# Third-party Asset Store content is licensed per-seat and must not be redistributed here.
+# Import the pack yourself, then run Kinema > Motion Matching > Setup Demo From Opsive Pack
+# to regenerate the config, database and scene locally (see Samples~/Locomotion Demo/Editor/OpsivePackSetup.cs).
+/[Aa]ssets/Opsive/
+/[Aa]ssets/Opsive.meta
+/[Aa]ssets/Samples/**/Opsive/
+/[Aa]ssets/Samples/**/Opsive.meta

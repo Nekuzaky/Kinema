@@ -4,6 +4,30 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-07-15
+
+Mocap data release. The demo could previously only be driven by procedurally authored clips, which
+capped how real the result could look no matter how good the runtime was. This release adds a setup
+path for a real motion capture locomotion pack.
+
+### Added
+- `OpsivePackSetup`: one-click setup that builds a config, database and scene from an Opsive
+  OmniAnimation locomotion pack. Bakes on the pack's own rig, so features, contact bone names and
+  playback all stay on the skeleton the capture was authored for, with no retargeting guesswork.
+- Clip auto-tagging from the pack's naming convention: 74 clips are sorted into 12 tags
+  (Crouch, Strafe, Backward, Diagonal, Idle, Walk, Run, Sprint, Turn, Start, Stop, Jump) without
+  painting a single range by hand.
+- `StanceTagController` sample: drives `RequiredTags` / `ExcludedTags` from gameplay stance. A mixed
+  pack needs this - nothing in the feature vector says "this pose is crouched", so an unfiltered
+  search will answer a standing query with a crouched frame whose feet happen to line up.
+
+### Notes
+- The pack itself is per-seat licensed Asset Store content and is not redistributed here. Import it
+  into your own project, then run Kinema > Motion Matching > Setup Demo From Opsive Pack. The
+  generated config, database and scene are git-ignored for the same reason.
+- Measured on the baked set: peak root speed 6.47 m/s, 40% of frames travelling above 0.3 m/s, a
+  foot contact detected on 53% of frames.
+
 ## [1.4.0] - 2026-07-15
 
 Movement realism release.
