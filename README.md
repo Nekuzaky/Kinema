@@ -3,6 +3,7 @@
 [![Unity 6000.3+](https://img.shields.io/badge/Unity-6000.3%2B-black)](https://unity.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](Packages/com.nekuzaky.kinema/LICENSE.md)
 [![UPM](https://img.shields.io/badge/UPM-com.nekuzaky.kinema-informational)](Packages/com.nekuzaky.kinema)
+[![Sponsor](https://img.shields.io/badge/%E2%9D%A4-Sponsor-ff69b4?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/Nekuzaky)
 
 Data-driven motion matching locomotion for Unity. An offline bake pipeline turns `AnimationClip`s
 into a normalized feature database; a Burst-compiled runtime queries it every few frames and blends
@@ -12,35 +13,39 @@ the whole loop.
 The toolkit is packaged as an installable UPM package (`com.nekuzaky.kinema`) and this repository is
 also a Unity project you can open to try the demo directly.
 
+## Support this project
+
+Kinema is free and open source. If it saves you time on your project, consider [becoming a sponsor](https://github.com/sponsors/Nekuzaky) - it directly funds continued development, bug fixes, and new features. See [FUNDING.yml](.github/FUNDING.yml) for all supported ways to contribute.
+
 ## Features
 
 **Matching core**
 - Weighted nearest-neighbour search over baked feature vectors: past+future trajectory, per-bone
-  pose and velocity, root velocity, gait phase - Burst-compiled parallel job with a KD-tree option
-  for very large databases.
+pose and velocity, root velocity, gait phase - Burst-compiled parallel job with a KD-tree option
+for very large databases.
 - Live pose query: the query's pose half is sampled off the rendered skeleton (after IK), not copied
-  from a database row, so the cost function judges what is actually on screen.
+from a database row, so the cost function judges what is actually on screen.
 - Foot-phase cost term keeps candidates on-cycle, so a jump cannot cut a stride mid-step.
 - Critically damped spring trajectory prediction (selectable), deviation-triggered search on top of
-  the timed interval, idle-duplicate pruning at bake time.
+the timed interval, idle-duplicate pruning at bake time.
 - Inertialization transitions (Burst animation job) or two-slot crossfades, foot-lock + ground
-  adaptation IK, stride warping, semantic tags (64-bit masks, filtered in the search job), motion
-  events with root warping, mirrored variants, calibration profiles, multi-database switching,
-  Mecanim interop.
+adaptation IK, stride warping, semantic tags (64-bit masks, filtered in the search job), motion
+events with root warping, mirrored variants, calibration profiles, multi-database switching,
+Mecanim interop.
 
 **Editor window** (`Tools > Kinema > Motion Matching Window`, Ctrl+Shift+M)
 - Overview / Database / Bake / Tags / Director / Debug / Analysis / Settings.
 - Director tab: play any baked clip on the live character like a custom Animator (scrubbable
-  timeline with per-foot contact lanes), record intent + pose, spawn ghost NPCs that replay a
-  recording through their own matching, bake a performance to a real `AnimationClip`, swap the
-  character's rig in one click.
+timeline with per-foot contact lanes), record intent + pose, spawn ghost NPCs that replay a
+recording through their own matching, bake a performance to a real `AnimationClip`, swap the
+character's rig in one click.
 - `Tools > Kinema > Benchmark Search`: measures the real search cost (mean/median/p99, order-checked
-  against Burst's async compile) and converts it into characters-per-frame at a given search rate.
+against Burst's async compile) and converts it into characters-per-frame at a given search rate.
 
 **Demo** (`Tools > Kinema > Demo Scene`)
 - One menu item resolves its own source - an installed mocap pack, otherwise a dropped-in FBX (using
-  its clips or generating a procedural set) - bakes it, and builds a scene with a traversal course
-  (vault walls, gapped platforms, rising steps), full keyboard + gamepad input, and camera orbit.
+its clips or generating a procedural set) - bakes it, and builds a scene with a traversal course
+(vault walls, gapped platforms, rising steps), full keyboard + gamepad input, and camera orbit.
 
 ## Installation
 
@@ -80,8 +85,8 @@ continuing the current clip, then crossfades or inertializes. See
 ## Repository layout
 
 ```
-Packages/com.nekuzaky.kinema/   The package (Runtime, Editor, Samples~, docs, license)
-Assets/                         Unity project shell and the imported demo
+Packages/com.nekuzaky.kinema/ The package (Runtime, Editor, Samples~, docs, license)
+Assets/ Unity project shell and the imported demo
 ```
 
 ## Testing
