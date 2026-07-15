@@ -694,6 +694,8 @@ namespace Kinema.MotionMatching
 
             int currentFrame = MapCurrentFrame();
             _lastCurrentFrame = currentFrame;
+            // The clock is authoritative for gait phase: the playing frame IS the phase state.
+            _query.FootPhase = _database.GetFootPhase(currentFrame);
             _query.SetTrajectory(_database, _desiredTrajectory);
 
             // The honest pose: what is on screen, not the frame the clock is on. Needs one primed

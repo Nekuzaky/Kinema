@@ -135,6 +135,9 @@ namespace Kinema.MotionMatching.Editor
                     report.Warnings.Add("Mirrored variants baked (experimental): frame count doubled.");
                 }
 
+                // Gait phase per frame, derived from the baked contacts clip by clip.
+                float[] footPhases = ComputeFootPhases(allContacts, clipEntries, contactBoneIndices.Length);
+
                 float[] features = allFeatures.ToArray();
                 ComputeNormalization(features, frames.Count, dim, out float[] mean, out float[] std);
                 Normalize(features, frames.Count, dim, mean, std);
@@ -150,7 +153,8 @@ namespace Kinema.MotionMatching.Editor
                     DateTime.UtcNow.ToString("u"), totalDuration,
                     allContacts.ToArray(), contactBoneIndices,
                     allTags.ToArray(), System.Linq.Enumerable.ToArray(config.TagNames),
-                    System.Linq.Enumerable.ToArray(config.CalibrationProfiles), config.HalfPrecision);
+                    System.Linq.Enumerable.ToArray(config.CalibrationProfiles), config.HalfPrecision,
+                    footPhases);
 
                 string path = SaveDatabase(config, database, existingDatabase != null);
 
@@ -174,6 +178,48 @@ namespace Kinema.MotionMatching.Editor
                 EditorUtility.ClearProgressBar();
                 if (instance != null) UnityEngine.Object.DestroyImmediate(instance);
             }
+        }
+
+        /// <summary>
+        /// Gait phase from the contacts: 0..1 between successive plants of the same foot (the first
+        /// contact bone), computed per clip so cycles never bleed across clip boundaries. Frames
+        /// outside any detected cycle - idles, single-step clips - get -1, and the matcher's phase
+        /// term ignores them: the cost only ever constrains motion that actually cycles.
+        /// </summary>
+        private static float[] ComputeFootPhases(List<byte> contacts, List<MotionClipEntry> clips, int contactBoneCount)
+        {
+            var phases = new float[contacts.Count];
+            for (int i = 0; i < phases.Length; i++) phases[i] = -1f;
+            if (contactBoneCount == 0) return phases;
+
+            foreach (MotionClipEntry clip in clips)
+            {
+                // Rising edges of the reference foot (contact bone 0) inside this clip.
+                var plants = new List<int>();
+                for (int f = clip.StartFrame; f < clip.StartFrame + clip.FrameCount; f++)
+                {
+                    bool down = (contacts[f] & 1) != 0;
+                    bool prevDown = f > clip.StartFrame && (contacts[f - 1] & 1) != 0;
+                    if (down && !prevDown) plants.Add(f);
+                }
+                if (plants.Count < 2) continue;
+
+                for (int p = 0; p < plants.Count - 1; p++)
+                {
+                    int cycleStart = plants[p];
+                    int cycleEnd = plants[p + 1];
+                    for (int f = cycleStart; f < cycleEnd; f++)
+                        phases[f] = (f - cycleStart) / (float)(cycleEnd - cycleStart);
+                }
+
+                // Extend the mean cadence over the lead-in and tail so whole walking clips carry phase.
+                float meanCycle = (plants[^1] - plants[0]) / (float)(plants.Count - 1);
+                for (int f = clip.StartFrame; f < plants[0]; f++)
+                    phases[f] = Mathf.Repeat((f - plants[0]) / meanCycle, 1f);
+                for (int f = plants[^1]; f < clip.StartFrame + clip.FrameCount; f++)
+                    phases[f] = Mathf.Repeat((f - plants[^1]) / meanCycle, 1f);
+            }
+            return phases;
         }
 
         #endregion

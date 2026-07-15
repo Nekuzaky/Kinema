@@ -23,6 +23,13 @@ namespace Kinema.MotionMatching
         /// <summary>Desired trajectory in character space, kept for debug drawing.</summary>
         public TrajectorySample[] DesiredTrajectory { get; private set; }
 
+        /// <summary>
+        /// Gait phase of the character right now (0..1), or -1 when unknown. Set from the current
+        /// frame's baked phase - the phase advances with the clock, so the playing frame is the
+        /// authoritative phase state. Used by the matcher's foot-phase cost term.
+        /// </summary>
+        public float FootPhase { get; set; } = -1f;
+
         public MotionMatchingQuery(FeatureSchema schema)
         {
             Values = new float[schema.Dimension];

@@ -35,6 +35,9 @@ namespace Kinema.MotionMatching
 
         // Foot contacts: one byte per frame, bit b = contact bone b grounded.
         [SerializeField] private byte[] _contacts = Array.Empty<byte>();
+
+        // Gait phase per frame, 0..1 through one full step cycle; -1 where no cycle exists (idle).
+        [SerializeField] private float[] _footPhases = Array.Empty<float>();
         [SerializeField] private int[] _contactBoneIndices = Array.Empty<int>();
 
         // Semantic tags: one 64-bit mask per frame, names indexed by bit.
@@ -198,6 +201,17 @@ namespace Kinema.MotionMatching
             return HasContacts ? _contacts[frameIndex] : (byte)0;
         }
 
+        public bool HasFootPhases => _footPhases != null && _footPhases.Length == _frameCount;
+
+        /// <summary>Raw phase array for the matcher's native upload. Empty when not baked.</summary>
+        public float[] FootPhases => _footPhases;
+
+        /// <summary>Gait phase of a frame (0..1 through a step cycle), or -1 where no cycle exists.</summary>
+        public float GetFootPhase(int frameIndex)
+        {
+            return HasFootPhases ? _footPhases[frameIndex] : -1f;
+        }
+
         /// <summary>Name of the schema bone behind contact slot <paramref name="contactSlot"/>.</summary>
         public string GetContactBoneName(int contactSlot)
         {
@@ -258,7 +272,8 @@ namespace Kinema.MotionMatching
             ulong[] frameTags = null,
             string[] tagNames = null,
             CalibrationProfile[] calibrationProfiles = null,
-            bool halfPrecision = false)
+            bool halfPrecision = false,
+            float[] footPhases = null)
         {
             _calibrationProfiles = calibrationProfiles ?? Array.Empty<CalibrationProfile>();
             _halfPrecision = halfPrecision;
@@ -275,6 +290,7 @@ namespace Kinema.MotionMatching
                 _featuresHalf = Array.Empty<ushort>();
             }
             _contacts = contacts ?? Array.Empty<byte>();
+            _footPhases = footPhases ?? Array.Empty<float>();
             _contactBoneIndices = contactBoneIndices ?? Array.Empty<int>();
             _frameTags = frameTags ?? Array.Empty<ulong>();
             _tagNames = tagNames ?? Array.Empty<string>();

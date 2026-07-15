@@ -19,13 +19,17 @@ namespace Kinema.MotionMatching
         [Min(0f)] public float BoneVelocity;
         [Min(0f)] public float RootVelocity;
 
+        [Tooltip("Penalty for candidates at a different point of the step cycle. Discourages jumps that cut a stride mid-step; needs foot phases baked (a rebake on older databases). 0 disables.")]
+        [Min(0f)] public float FootPhase;
+
         public static FeatureWeights Default => new FeatureWeights
         {
             TrajectoryPosition = 1.0f,
             TrajectoryDirection = 1.0f,
             BonePosition = 1.0f,
             BoneVelocity = 0.6f,
-            RootVelocity = 0.8f
+            RootVelocity = 0.8f,
+            FootPhase = 0.5f
         };
 
         #endregion

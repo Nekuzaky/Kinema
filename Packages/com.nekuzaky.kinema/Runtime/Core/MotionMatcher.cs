@@ -59,6 +59,8 @@ namespace Kinema.MotionMatching
         private NativeArray<float> _nativeWeights;
         private NativeArray<float> _nativeQuery;
         private NativeArray<ulong> _nativeTags;
+        private NativeArray<float> _nativePhases;
+        private float _phaseWeight;
         private NativeArray<float> _chunkBestCost;
         private NativeArray<int> _chunkBestFrame;
         private readonly int _chunkCount;
@@ -79,6 +81,11 @@ namespace Kinema.MotionMatching
                 ? new NativeArray<ulong>(database.FrameTags, Allocator.Persistent)
                 : new NativeArray<ulong>(database.FrameCount, Allocator.Persistent); // zeroed = untagged
             _chunkCount = (database.FrameCount + ChunkSize - 1) / ChunkSize;
+            _nativePhases = database.HasFootPhases
+                ? new NativeArray<float>(database.FootPhases, Allocator.Persistent)
+                : new NativeArray<float>(database.FrameCount, Allocator.Persistent); // zeroed -> treated as no phase via weight gate
+            if (!database.HasFootPhases)
+                for (int i = 0; i < _nativePhases.Length; i++) _nativePhases[i] = -1f;
             _chunkBestCost = new NativeArray<float>(_chunkCount, Allocator.Persistent);
             _chunkBestFrame = new NativeArray<int>(_chunkCount, Allocator.Persistent);
 
@@ -99,6 +106,7 @@ namespace Kinema.MotionMatching
         {
             _perDimensionWeights = _database.Schema.BuildPerDimensionWeights(weights);
             _nativeWeights.CopyFrom(_perDimensionWeights);
+            _phaseWeight = weights.FootPhase;
             _kdTree?.Invalidate(); // metric changed: the scaled tree is stale.
         }
 
@@ -112,10 +120,12 @@ namespace Kinema.MotionMatching
             MotionMatchingQuery query, int ignoreFrame = -1, int ignoreRadius = 0,
             ulong requiredTags = 0ul, ulong excludedTags = 0ul)
         {
-            // KD-tree path: exact under the weighted metric, but cannot express tag filters or
-            // ignore ranges - use it only when neither is active.
+            bool phaseActive = _phaseWeight > 0f && query.FootPhase >= 0f && _database.HasFootPhases;
+
+            // KD-tree path: exact under the weighted metric, but cannot express tag filters, ignore
+            // ranges or the phase term - use it only when none of those are active.
             if (Acceleration == SearchAcceleration.KdTree
-                && requiredTags == 0ul && excludedTags == 0ul && ignoreFrame < 0)
+                && requiredTags == 0ul && excludedTags == 0ul && ignoreFrame < 0 && !phaseActive)
             {
                 _kdTree ??= new KdTreeSearch();
                 if (!_kdTree.IsBuilt)
@@ -135,6 +145,9 @@ namespace Kinema.MotionMatching
                 Tags = _nativeTags,
                 RequiredTags = requiredTags,
                 ExcludedTags = excludedTags,
+                Phases = _nativePhases,
+                QueryPhase = phaseActive ? query.FootPhase : -1f,
+                PhaseWeight = phaseActive ? _phaseWeight : 0f,
                 Dimension = _database.Dimension,
                 FrameCount = _database.FrameCount,
                 ChunkSize = ChunkSize,
@@ -169,7 +182,7 @@ namespace Kinema.MotionMatching
             int dimension = _database.Dimension;
             int offset = frameIndex * dimension;
 
-            float cost = 0f;
+            float cost = PhaseCost(query, frameIndex);
             for (int i = 0; i < dimension; i++)
             {
                 float d = values[i] - features[offset + i];
@@ -186,6 +199,7 @@ namespace Kinema.MotionMatching
             _nativeWeights.Dispose();
             _nativeQuery.Dispose();
             _nativeTags.Dispose();
+            _nativePhases.Dispose();
             _chunkBestCost.Dispose();
             _chunkBestFrame.Dispose();
         }
@@ -194,6 +208,17 @@ namespace Kinema.MotionMatching
 
         #region Tools and Utilities
 
+        /// <summary>Circular phase distance term, shared by the managed cost paths.</summary>
+        private float PhaseCost(MotionMatchingQuery query, int frameIndex)
+        {
+            if (_phaseWeight <= 0f || query.FootPhase < 0f || !_database.HasFootPhases) return 0f;
+            float p = _database.GetFootPhase(frameIndex);
+            if (p < 0f) return 0f;
+            float d = Mathf.Abs(p - query.FootPhase);
+            d = Mathf.Min(d, 1f - d) * 2f;
+            return _phaseWeight * d * d;
+        }
+
         [BurstCompile]
         private struct SearchJob : IJobParallelFor
         {
@@ -201,6 +226,8 @@ namespace Kinema.MotionMatching
             [ReadOnly] public NativeArray<float> Weights;
             [ReadOnly] public NativeArray<float> Query;
             [ReadOnly] public NativeArray<ulong> Tags;
+            [ReadOnly] public NativeArray<float> Phases;
+            public float QueryPhase, PhaseWeight;
             public ulong RequiredTags, ExcludedTags;
             public int Dimension, FrameCount, ChunkSize;
             public int IgnoreStart, IgnoreEnd;
@@ -225,7 +252,22 @@ namespace Kinema.MotionMatching
                     if ((tags & ExcludedTags) != 0ul) continue;
 
                     int offset = f * Dimension;
+
+                    // Foot-phase term first: a fixed candidate cost, so the branch-and-bound
+                    // early-out below still sees a monotonically growing total.
                     float cost = 0f;
+                    if (PhaseWeight > 0f && QueryPhase >= 0f)
+                    {
+                        float p = Phases[f];
+                        if (p >= 0f)
+                        {
+                            float pd = Mathf.Abs(p - QueryPhase);
+                            pd = Mathf.Min(pd, 1f - pd) * 2f;   // circular, normalized 0..1
+                            cost = PhaseWeight * pd * pd;
+                            if (cost >= best) continue;
+                        }
+                    }
+
                     for (int i = 0; i < Dimension; i++)
                     {
                         float d = Query[i] - Features[offset + i];
