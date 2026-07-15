@@ -4,6 +4,40 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.0] - 2026-07-15
+
+Core matching release: six improvements to the matcher itself, the first since v1.4.
+
+### Added
+- Live pose query. The query's pose half was copied from the database row being played, but the
+  rendered pose is not that frame any more - inertialization, stride warping and IK all moved it.
+  That is why the pose cost read exactly 0.000. The query now samples the schema's bones off the
+  rig as rendered (positions and velocities in character space, the baker's own math), verified by
+  a test feeding a skeleton standing exactly on a baked frame. Falls back to the frame copy when a
+  schema bone is missing on the rig.
+- Foot-phase cost term. Gait phase (0..1 through a step cycle) is baked from the contacts, stored
+  as a parallel channel - the feature layout, KD-tree and old databases stay intact - and the
+  matcher adds a circular phase distance so candidates that would cut a stride mid-step cost more.
+  Inert at weight 0 (every existing config) and on frames with no cycle (idles carry -1).
+- Critically damped spring prediction (default; the old exponential lag stays selectable). Velocity
+  starts changing with zero acceleration and ramps in, the way a body with mass commits to a turn.
+  Closed-form, verified against numerical integration.
+- Deviation-triggered search: prediction runs every frame, and when the predicted future points
+  drift beyond a threshold from what the last search answered, the search fires that frame instead
+  of up to a full interval later. Character space keeps the criterion stable in straight lines.
+- Idle pruning (opt-in on the config): near-identical consecutive idle frames are dropped at bake
+  time. On the demo pack: 4,705 -> 3,699 frames (-21%), all of it interchangeable standing. Frame
+  mapping switched to a binary search over actual frame times, correct on non-uniform grids.
+- `WeightTuner`: coordinate descent over the matching weights, one deterministic replay of a
+  recorded take per evaluation, scored by foot slide + jump rate. Record a lap, add the component
+  next to a ReplayLocomotionProvider, call StartTuning, wait; best weights are applied and logged.
+
+### Notes
+- The demo config now bakes with phases, pruning and a 0.5 FootPhase weight. Existing configs are
+  untouched: the phase term needs a rebake plus a nonzero weight to do anything.
+- 47/47 EditMode tests (8 new across query, predictor and phase). Play-mode feel is not visually
+  verified; the deterministic replay + Analysis tab is the intended way to measure it.
+
 ## [1.12.0] - 2026-07-15
 
 ### Added

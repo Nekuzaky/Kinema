@@ -129,6 +129,14 @@ namespace Kinema.MotionMatching.Editor
                     return report;
                 }
 
+                if (config.PruneIdleDuplicates)
+                {
+                    int before = frames.Count;
+                    PruneIdleDuplicates(schema, allFeatures, allContacts, allTags, frames, clipEntries);
+                    if (frames.Count < before)
+                        report.Warnings.Add($"Idle pruning removed {before - frames.Count:N0} near-duplicate frames ({before:N0} -> {frames.Count:N0}).");
+                }
+
                 if (config.GenerateMirroredVariants)
                 {
                     AppendMirroredFrames(schema, allFeatures, allContacts, allTags, frames, contactBoneIndices);
@@ -178,6 +186,76 @@ namespace Kinema.MotionMatching.Editor
                 EditorUtility.ClearProgressBar();
                 if (instance != null) UnityEngine.Object.DestroyImmediate(instance);
             }
+        }
+
+        /// <summary>
+        /// Drops consecutive near-static frames whose raw pose barely moved since the last kept
+        /// frame. Long idles contribute hundreds of interchangeable candidates that both bias the
+        /// search toward standing still and pay their cost on every single search. Cycle-carrying
+        /// motion is untouched: any frame with real root speed is always kept.
+        /// </summary>
+        private static void PruneIdleDuplicates(FeatureSchema schema, List<float> features,
+            List<byte> contacts, List<ulong> tags, List<MotionFrameInfo> frames, List<MotionClipEntry> clipEntries)
+        {
+            int dim = schema.Dimension;
+            int poseStart = schema.BonePositionOffset;
+            int rootOffset = schema.RootVelocityOffset;
+            const float IdleSpeed = 0.25f;       // m/s: below this a frame is idle-ish
+            const float MinPoseDelta = 0.035f;   // raw pose distance that still counts as "the same"
+
+            var keptFeatures = new List<float>(features.Count);
+            var keptContacts = new List<byte>(contacts.Count);
+            var keptTags = new List<ulong>(tags.Count);
+            var keptFrames = new List<MotionFrameInfo>(frames.Count);
+
+            int cursor = 0;
+            for (int c = 0; c < clipEntries.Count; c++)
+            {
+                MotionClipEntry clip = clipEntries[c];
+                int newStart = keptFrames.Count;
+                int lastKeptRow = -1;
+
+                for (int f = 0; f < clip.FrameCount; f++, cursor++)
+                {
+                    int row = cursor * dim;
+                    bool keep = true;
+
+                    if (lastKeptRow >= 0)
+                    {
+                        float speed = Mathf.Sqrt(
+                            features[row + rootOffset] * features[row + rootOffset] +
+                            features[row + rootOffset + 1] * features[row + rootOffset + 1]);
+                        if (speed < IdleSpeed)
+                        {
+                            float delta = 0f;
+                            for (int i = poseStart; i < dim; i++)
+                            {
+                                float d = features[row + i] - features[lastKeptRow + i];
+                                delta += d * d;
+                            }
+                            keep = Mathf.Sqrt(delta) > MinPoseDelta;
+                        }
+                    }
+                    // The clip's final frame anchors its duration; always keep it.
+                    if (f == clip.FrameCount - 1) keep = true;
+
+                    if (!keep) continue;
+                    for (int i = 0; i < dim; i++) keptFeatures.Add(features[row + i]);
+                    keptContacts.Add(contacts[cursor]);
+                    keptTags.Add(tags[cursor]);
+                    keptFrames.Add(frames[cursor]);
+                    lastKeptRow = (keptFrames.Count - 1) * dim;
+                }
+
+                clip.StartFrame = newStart;
+                clip.FrameCount = keptFrames.Count - newStart;
+                clipEntries[c] = clip;
+            }
+
+            features.Clear(); features.AddRange(keptFeatures);
+            contacts.Clear(); contacts.AddRange(keptContacts);
+            tags.Clear(); tags.AddRange(keptTags);
+            frames.Clear(); frames.AddRange(keptFrames);
         }
 
         /// <summary>

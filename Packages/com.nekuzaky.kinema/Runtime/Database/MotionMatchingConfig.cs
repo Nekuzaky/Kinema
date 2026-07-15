@@ -46,6 +46,9 @@ namespace Kinema.MotionMatching
         [Tooltip("Store features as 16-bit halves: halves the asset size, decoded once at load. Negligible quality impact on normalized features.")]
         [SerializeField] private bool _halfPrecision;
 
+        [Tooltip("Drop near-identical consecutive idle frames at bake time. Long idles contribute hundreds of interchangeable candidates; keeping one in N shrinks the database and debiases the search. Playback is unaffected - frames carry their own clip time.")]
+        [SerializeField] private bool _pruneIdleDuplicates;
+
         [Header("Mirroring (experimental)")]
         [Tooltip("Bake a mirrored variant of every frame (doubles coverage). Playback mirrors the pose at runtime; requires a left/right symmetric rig. Experimental.")]
         [SerializeField] private bool _generateMirroredVariants;
@@ -65,6 +68,7 @@ namespace Kinema.MotionMatching
         public bool GenerateMirroredVariants => _generateMirroredVariants;
         public IReadOnlyList<CalibrationProfile> CalibrationProfiles => _calibrationProfiles;
         public bool HalfPrecision => _halfPrecision;
+        public bool PruneIdleDuplicates => _pruneIdleDuplicates;
         public IReadOnlyList<string> TagNames => _tagNames;
         public IReadOnlyList<ClipTagTrack> TagTracks => _tagTracks;
 

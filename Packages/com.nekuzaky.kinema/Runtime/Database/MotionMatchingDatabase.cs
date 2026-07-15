@@ -149,10 +149,22 @@ namespace Kinema.MotionMatching
         {
             MotionClipEntry clip = _clips[clipIndex];
             if (clip.FrameCount <= 1) return clip.StartFrame;
-            float frameDt = _bakeFrameRate > 0 ? 1f / _bakeFrameRate : 1f / 30f;
-            int local = Mathf.RoundToInt(clipTime / frameDt);
-            local = Mathf.Clamp(local, 0, clip.FrameCount - 1);
-            return clip.StartFrame + local;
+
+            // Binary search on the frames' actual times: correct whether the clip was baked on a
+            // uniform grid or thinned by idle pruning (which leaves non-uniform gaps).
+            int lo = clip.StartFrame;
+            int hi = clip.StartFrame + clip.FrameCount - 1;
+            while (lo < hi)
+            {
+                int mid = (lo + hi + 1) >> 1;
+                if (_frames[mid].Time <= clipTime) lo = mid;
+                else hi = mid - 1;
+            }
+            // lo = last frame at or before clipTime; pick the nearer of it and its successor.
+            if (lo + 1 < clip.StartFrame + clip.FrameCount &&
+                _frames[lo + 1].Time - clipTime < clipTime - _frames[lo].Time)
+                lo++;
+            return lo;
         }
 
         /// <summary>

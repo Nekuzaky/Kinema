@@ -291,6 +291,10 @@ namespace Kinema.MotionMatching.Samples.Editor
             var so = new SerializedObject(config);
             so.FindProperty("_rigPrefab").objectReferenceValue = rig;
             so.FindProperty("_bakeFrameRate").intValue = 30;
+            // Core-quality options: the phase term needs a nonzero weight, and 66% of this pack is
+            // near-idle, so pruning debiases the search besides shrinking it.
+            so.FindProperty("_defaultWeights.FootPhase").floatValue = 0.5f;
+            so.FindProperty("_pruneIdleDuplicates").boolValue = true;
 
             SetArray(so.FindProperty("_clips"), clips.Length, (p, i) => p.objectReferenceValue = clips[i]);
 
