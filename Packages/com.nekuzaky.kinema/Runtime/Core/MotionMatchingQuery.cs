@@ -6,9 +6,12 @@ namespace Kinema.MotionMatching
     /// The normalized feature vector searched against the database each tick, split into the two
     /// halves motion matching cares about:
     ///   - the trajectory half, built from the desired locomotion (where we want to go),
-    ///   - the pose half, copied straight from the currently playing frame (where the body is now).
-    /// Copying the pose half from the database guarantees the query and the candidates live in the
-    /// exact same normalized space, which keeps pose costs meaningful and avoids a live pose sampler.
+    ///   - the pose half: either sampled from the skeleton actually on screen (the honest option -
+    ///     after inertialization, stride warping and IK the rendered pose is not the database frame
+    ///     any more), or copied from the currently playing frame as a fallback when the schema's
+    ///     bones cannot be resolved on the rig.
+    /// Both paths normalize with the database statistics, so query and candidates always live in
+    /// the same normalized space.
     /// </summary>
     public sealed class MotionMatchingQuery
     {
@@ -53,6 +56,42 @@ namespace Kinema.MotionMatching
                 Values[dx] = database.NormalizeValue(dx, s.Direction.x);
                 Values[dx + 1] = database.NormalizeValue(dx + 1, s.Direction.y);
             }
+        }
+
+        /// <summary>
+        /// Builds the pose half from the skeleton actually rendered: bone positions and velocities
+        /// in character space, plus the measured root velocity - the same math the baker used, so
+        /// the values are directly comparable to the candidates once normalized. This is what makes
+        /// the pose cost honest: it measures distance from the pose on screen, not from the frame
+        /// the clock happens to be on.
+        /// </summary>
+        public void SetPoseFromSkeleton(MotionMatchingDatabase database, CharacterSpace space,
+            Vector3[] boneWorldPositions, Vector3[] boneWorldVelocities, Vector3 rootWorldVelocity)
+        {
+            FeatureSchema schema = database.Schema;
+            int posOffset = schema.BonePositionOffset;
+            int velOffset = schema.BoneVelocityOffset;
+
+            for (int b = 0; b < schema.BoneCount; b++)
+            {
+                Vector3 localPos = space.ToLocalOffset3D(boneWorldPositions[b]);
+                Vector3 localVel = space.ToLocalVector3D(boneWorldVelocities[b]);
+
+                int p = posOffset + b * 3;
+                Values[p] = database.NormalizeValue(p, localPos.x);
+                Values[p + 1] = database.NormalizeValue(p + 1, localPos.y);
+                Values[p + 2] = database.NormalizeValue(p + 2, localPos.z);
+
+                int v = velOffset + b * 3;
+                Values[v] = database.NormalizeValue(v, localVel.x);
+                Values[v + 1] = database.NormalizeValue(v + 1, localVel.y);
+                Values[v + 2] = database.NormalizeValue(v + 2, localVel.z);
+            }
+
+            Vector2 localRootVel = space.ToLocalDirection(rootWorldVelocity);
+            int r = schema.RootVelocityOffset;
+            Values[r] = database.NormalizeValue(r, localRootVel.x);
+            Values[r + 1] = database.NormalizeValue(r + 1, localRootVel.y);
         }
 
         /// <summary>

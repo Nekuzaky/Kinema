@@ -80,6 +80,10 @@ namespace Kinema.MotionMatching
         [Header("Trajectory Prediction")]
         [SerializeField] private TrajectoryPredictionSettings _prediction = TrajectoryPredictionSettings.Default;
 
+        [Header("Pose Query")]
+        [Tooltip("Build the query's pose half from the skeleton actually rendered (after inertialization, stride warp and IK) instead of copying the current database frame. Honest pose costs; falls back to the frame copy when the schema's bones are missing on the rig.")]
+        [SerializeField] private bool _livePoseQuery = true;
+
         [Header("Events")]
         [Tooltip("Relay AnimationEvents of the active clip via SendMessage, matching Mecanim semantics.")]
         [SerializeField] private bool _relayAnimationEvents = true;
@@ -277,6 +281,15 @@ namespace Kinema.MotionMatching
         private TrajectoryHistory _history;
         private int _lastCurrentFrame = -1;
         private Vector3[] _currentBones;
+
+        // Live pose sampling: the schema's bones resolved on this rig, plus last-frame world
+        // positions for finite-difference velocities.
+        private Transform[] _queryBones;
+        private Vector3[] _queryBoneWorldPositions;
+        private Vector3[] _queryBonePreviousPositions;
+        private Vector3[] _queryBoneVelocities;
+        private bool _queryBonesValid;
+        private bool _queryBonesPrimed;
         private Vector3[] _candidateBones;
 
         #endregion
@@ -344,6 +357,7 @@ namespace Kinema.MotionMatching
             int boneCount = _database.Schema.BoneCount;
             _currentBones = new Vector3[boneCount];
             _candidateBones = new Vector3[boneCount];
+            ResolveQueryBones();
             _history = new TrajectoryHistory(128);
             _snapshots = new SearchSnapshotRecorder(240, FeatureGroupExtensions.Count, _database.Schema.TrajectoryPointCount);
             _frameUsage = new int[_database.FrameCount];
@@ -457,6 +471,9 @@ namespace Kinema.MotionMatching
                 _measuredVelocity = (transform.position - _previousPosition) / dt;
             _previousPosition = transform.position;
             _history.Record(Time.time, transform.position, transform.forward);
+
+            // Sample the skeleton as rendered last frame (IK included) for the live pose query.
+            if (_livePoseQuery && _queryBonesValid && dt > 0f) SampleQueryBones(dt);
 
             UpdateStrideWarp(dt);
             AdvanceClocks(dt);
@@ -629,7 +646,13 @@ namespace Kinema.MotionMatching
             int currentFrame = MapCurrentFrame();
             _lastCurrentFrame = currentFrame;
             _query.SetTrajectory(_database, _desiredTrajectory);
-            _query.SetPoseFromFrame(_database, currentFrame);
+
+            // The honest pose: what is on screen, not the frame the clock is on. Needs one primed
+            // sample so velocities exist; until then (and when bones are missing) copy the frame.
+            if (_livePoseQuery && _queryBonesValid && _queryBonesPrimed)
+                _query.SetPoseFromSkeleton(_database, space, _queryBoneWorldPositions, _queryBoneVelocities, _measuredVelocity);
+            else
+                _query.SetPoseFromFrame(_database, currentFrame);
 
             MotionMatchResult result = _matcher.Search(_query, requiredTags: RequiredTags, excludedTags: ExcludedTags);
 
@@ -647,6 +670,52 @@ namespace Kinema.MotionMatching
             }
 
             UpdateDebug(result, continuationCost, jumped);
+        }
+
+        /// <summary>Finds the schema's bones on this rig by name; missing bones disable live sampling.</summary>
+        private void ResolveQueryBones()
+        {
+            string[] names = _database.Schema.BoneNames;
+            int count = names?.Length ?? 0;
+            _queryBones = new Transform[count];
+            _queryBoneWorldPositions = new Vector3[count];
+            _queryBonePreviousPositions = new Vector3[count];
+            _queryBoneVelocities = new Vector3[count];
+            _queryBonesPrimed = false;
+            _queryBonesValid = count > 0;
+
+            for (int b = 0; b < count; b++)
+            {
+                _queryBones[b] = FindDeepChild(transform, names[b]);
+                if (_queryBones[b] == null)
+                {
+                    _queryBonesValid = false;
+                    if (_livePoseQuery)
+                        Debug.LogWarning($"[MotionMatching] '{name}': bone '{names[b]}' not found on this rig; " +
+                                         "the pose query falls back to copying the current database frame.", this);
+                    return;
+                }
+            }
+        }
+
+        private void SampleQueryBones(float dt)
+        {
+            for (int b = 0; b < _queryBones.Length; b++)
+            {
+                Vector3 position = _queryBones[b].position;
+                _queryBoneVelocities[b] = _queryBonesPrimed ? (position - _queryBonePreviousPositions[b]) / dt : Vector3.zero;
+                _queryBonePreviousPositions[b] = position;
+                _queryBoneWorldPositions[b] = position;
+            }
+            _queryBonesPrimed = true;
+        }
+
+        private static Transform FindDeepChild(Transform root, string boneName)
+        {
+            if (string.IsNullOrEmpty(boneName)) return null;
+            foreach (Transform t in root.GetComponentsInChildren<Transform>(true))
+                if (t.name == boneName) return t;
+            return null;
         }
 
         private bool ShouldJump(MotionMatchResult result, int currentFrame, float continuationCost)
