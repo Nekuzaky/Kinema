@@ -4,6 +4,14 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0] - 2026-07-15
+
+### Removed
+- The in-game browser overlay (`AnimationBrowser`). Everything it did lives in the window's
+  Director tab now, so the game view carries no UI at all. The in-game shortcuts stay: R/Select
+  records, G/right-shoulder spawns a ghost, K/dpad-down clears, C/Ctrl/East crouches, Space/South
+  vaults. Regenerate the demo scene to drop the now-missing component from existing scenes.
+
 ## [1.10.0] - 2026-07-15
 
 Clean-game-view release: everything the in-game overlay did now lives in the window.

@@ -14,8 +14,8 @@ namespace Kinema.MotionMatching.Samples.Editor
     ///
     /// The scene is built to provoke the subsystems flat ground never touches: slopes and steps for
     /// ground adaptation, a low ledge for the vault event, a long lane for stride warping. It also
-    /// carries the tools for judging the data rather than just feeling it - an animation browser that
-    /// can force any clip, and recording that sends ghosts out to redo your trajectory.
+    /// carries recording that sends ghosts out to redo your trajectory; clip playback, tags and
+    /// takes are driven from the window's Director tab.
     /// </summary>
     public static class DemoSceneTool
     {
@@ -127,7 +127,7 @@ namespace Kinema.MotionMatching.Samples.Editor
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, ScenePath);
 
-            Debug.Log($"[Kinema] Demo scene saved → {ScenePath}. Play, then: Tab browser, WASD move, " +
+            Debug.Log($"[Kinema] Demo scene saved → {ScenePath}. Play, then: WASD move, " +
                       "Space vault at a low ledge, C crouch, R record, G ghost, K clear ghosts.");
         }
 
@@ -183,7 +183,6 @@ namespace Kinema.MotionMatching.Samples.Editor
             character.AddComponent<PoseRecorder>();
             character.AddComponent<CharacterMotor>();
             character.AddComponent<LocomotionInputProvider>();
-            character.AddComponent<AnimationBrowser>();
             character.AddComponent<GhostReplayDirector>();
 
             // Only meaningful on a tagged set; on an untagged one it would warn every run.
