@@ -9,16 +9,20 @@ namespace Kinema.MotionMatching
     /// motion matching. Lives in the runtime assembly so the editor window can spawn ghosts too -
     /// the sample hotkey component and the Director tab both funnel through here.
     ///
-    /// The ghost keeps only what it needs to solve locomotion (controller, IK, animator); every
-    /// other MonoBehaviour is stripped by a whitelist rather than a blacklist, so gameplay scripts,
-    /// input readers and recorders the project added are removed without this class having to know
-    /// their types. That is also what keeps this assembly free of a Samples dependency.
+    /// Two body options. Default: clone the source character, stripped by whitelist so gameplay
+    /// scripts, input readers and recorders are removed without this class knowing their types.
+    /// Or hand in a different rig: the ghost is built on that model instead, with the controller's
+    /// serialized settings copied over, and Humanoid retargeting maps the same database onto the new
+    /// proportions - the recorded performance on another character.
+    ///
+    /// Every ghost carries a <see cref="PoseRecorder"/> capturing from its first frame, so the
+    /// performance it produces can be baked to an AnimationClip afterwards.
     /// </summary>
     public static class GhostSpawner
     {
         #region Public
 
-        /// <summary>Components a ghost keeps. Everything else on the clone is destroyed.</summary>
+        /// <summary>Components a cloned ghost keeps. Everything else on the clone is destroyed.</summary>
         private static readonly Type[] Keep =
         {
             typeof(MotionMatchingController),
@@ -32,20 +36,17 @@ namespace Kinema.MotionMatching
 
         /// <summary>
         /// Spawns a ghost of <paramref name="source"/> replaying <paramref name="recording"/>.
+        /// With <paramref name="rig"/> set, the ghost is built on that model instead of a clone.
         /// Returns null when the recording is unusable.
         /// </summary>
-        public static GameObject Spawn(MotionMatchingController source, SessionRecording recording, bool loop, Color tint)
+        public static GameObject Spawn(MotionMatchingController source, SessionRecording recording, bool loop, Color tint, GameObject rig = null)
         {
             if (source == null || recording == null || !recording.IsValid) return null;
 
-            GameObject ghost = UnityEngine.Object.Instantiate(source.gameObject, source.transform.position, source.transform.rotation);
+            GameObject ghost = rig != null ? BuildOnRig(source, rig) : BuildClone(source);
+            if (ghost == null) return null;
             ghost.name = "Ghost";
 
-            // Instantiate already ran the clone's Awake, so its components are live and its Update
-            // would fire this frame. Park it while it is being rebuilt into an NPC.
-            ghost.SetActive(false);
-
-            Strip(ghost);
             Tint(ghost, tint);
 
             var replay = ghost.AddComponent<ReplayLocomotionProvider>();
@@ -55,18 +56,61 @@ namespace Kinema.MotionMatching
             // Global effect: forcing the clock here would dictate the live player's frame rate too.
             replay.ForceRecordedTimestep = false;
             replay.PlayOnStart = true;
-
-            // The clone's controller cached the source's locomotion provider during Awake, and that
-            // provider has just been stripped. Without this the ghost stands still holding a dead reference.
             ghost.GetComponent<MotionMatchingController>().SetLocomotionProvider(replay);
 
+            // Capture the ghost's own performance from its first frame, so it can be baked to a clip.
+            var poseRecorder = ghost.AddComponent<PoseRecorder>();
+
             ghost.SetActive(true);
+            poseRecorder.StartRecording();
             return ghost;
         }
 
         #endregion
 
         #region Tools and Utilities
+
+        private static GameObject BuildClone(MotionMatchingController source)
+        {
+            GameObject ghost = UnityEngine.Object.Instantiate(source.gameObject, source.transform.position, source.transform.rotation);
+
+            // Instantiate already ran the clone's Awake, so its components are live and its Update
+            // would fire this frame. Park it while it is being rebuilt into an NPC.
+            ghost.SetActive(false);
+            Strip(ghost);
+            return ghost;
+        }
+
+        /// <summary>
+        /// Builds the ghost on a different model: instantiate the rig, copy the controller's (and
+        /// IK's) serialized settings via the JSON round-trip - asset references included - and point
+        /// the controller at the rig's own Animator. Humanoid retargeting does the rest, which is
+        /// also the requirement: a Generic rig cannot receive a Humanoid-baked database.
+        /// </summary>
+        private static GameObject BuildOnRig(MotionMatchingController source, GameObject rig)
+        {
+            GameObject ghost = UnityEngine.Object.Instantiate(rig, source.transform.position, source.transform.rotation);
+            ghost.SetActive(false);
+
+            var animator = ghost.GetComponentInChildren<Animator>();
+            if (animator == null) animator = ghost.AddComponent<Animator>();
+            animator.applyRootMotion = true;
+            if (!animator.isHuman)
+                Debug.LogWarning($"[Kinema] Ghost rig '{rig.name}' is not Humanoid: the database cannot retarget onto it and the ghost will not animate. Import the model as Humanoid.", ghost);
+
+            foreach (Type type in Keep)
+            {
+                Component original = source.GetComponent(type);
+                if (original == null) continue;
+                Component copy = ghost.AddComponent(type);
+                // Serialized fields only, asset references included - exactly what a ghost needs.
+                JsonUtility.FromJsonOverwrite(JsonUtility.ToJson(original), copy);
+            }
+
+            // The JSON copy carried the source's Animator reference; re-point before OnEnable runs.
+            ghost.GetComponent<MotionMatchingController>().SetAnimator(animator);
+            return ghost;
+        }
 
         private static void Strip(GameObject ghost)
         {

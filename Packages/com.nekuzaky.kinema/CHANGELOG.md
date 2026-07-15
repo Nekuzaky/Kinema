@@ -4,6 +4,20 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.0] - 2026-07-15
+
+### Added
+- Ghosts on any body: hand a different Humanoid model to the spawner (Director > Ghosts > Ghost rig,
+  or the sample director's Ghost Rig field) and the ghost is built on it - controller settings and
+  database references copied over, Humanoid retargeting mapping the recorded performance onto the
+  new proportions. A non-Humanoid rig is refused with a console warning, since the database cannot
+  retarget onto it.
+- Every ghost records its own pose from its first frame. Director > Ghosts > Bake Ghost Clip turns
+  that performance into an AnimationClip - swap the rig, spawn, bake, and the take exists as a clip
+  on the new character.
+- `MotionMatchingController.SetAnimator`: re-point the controller before it initializes; the
+  ghost-on-a-different-rig path needs it because the copied settings still name the source Animator.
+
 ## [1.11.0] - 2026-07-15
 
 ### Removed

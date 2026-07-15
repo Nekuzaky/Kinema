@@ -28,6 +28,7 @@ namespace Kinema.MotionMatching.Editor
         private bool _loopGhosts = true;
         private SessionRecording _lastRecording;
         private GameObject _swapRig;
+        private GameObject _ghostRig;
         private static readonly Color GhostTint = new Color(0.2f, 0.9f, 1f, 1f);
 
         #endregion
@@ -316,6 +317,40 @@ namespace Kinema.MotionMatching.Editor
             }
         }
 
+        /// <summary>
+        /// Every ghost records its own pose from spawn. Stop that capture and bake it: the recorded
+        /// performance on the ghost's body - swap the rig, spawn, bake, and the take is an
+        /// AnimationClip on the new character.
+        /// </summary>
+        private void BakeGhostClip(MotionMatchingController controller)
+        {
+            ReplayLocomotionProvider ghost = NewestGhost(controller);
+            var recorder = ghost != null ? ghost.GetComponent<PoseRecorder>() : null;
+            if (recorder == null)
+            {
+                _saveMessage = "This ghost carries no pose recorder (spawned before v1.12).";
+                return;
+            }
+
+            PoseTake take = recorder.IsRecording ? recorder.StopRecording() : recorder.LastTake;
+            if (take == null || !take.IsValid)
+            {
+                _saveMessage = "The ghost has not performed long enough to bake yet.";
+                return;
+            }
+
+            string path = EditorUtility.SaveFilePanelInProject("Bake Ghost Performance", "GhostTake", "anim",
+                $"{take.FrameCount} frames, {take.Duration:F1}s on '{ghost.name}'.");
+            if (string.IsNullOrEmpty(path)) return;
+
+            AnimationClip clip = PoseClipBaker.Bake(take, path);
+            if (clip != null)
+            {
+                _saveMessage = $"Ghost performance baked to {path}.";
+                EditorGUIUtility.PingObject(clip);
+            }
+        }
+
         private static ReplayLocomotionProvider NewestGhost(MotionMatchingController controller)
         {
             ReplayLocomotionProvider newest = null;
@@ -431,14 +466,24 @@ namespace Kinema.MotionMatching.Editor
                     "A ghost replays the take's intent through its own matching: it redoes where you went rather than playing a video of you. Two ghosts from one take can differ slightly - that is the system working.",
                     MessageType.None);
 
+                // A different Humanoid model here puts the recorded performance on another body.
+                _ghostRig = (GameObject)EditorGUILayout.ObjectField("Ghost rig (optional)", _ghostRig, typeof(GameObject), false);
+
+                SessionRecording take = _lastRecording != null && _lastRecording.IsValid ? _lastRecording : NewestGhost(controller)?.Recording;
+
                 using (new EditorGUILayout.HorizontalScope())
                 {
                     _loopGhosts = GUILayout.Toggle(_loopGhosts, "Loop", GUILayout.Width(60));
 
-                    using (new EditorGUI.DisabledScope(_lastRecording == null || !_lastRecording.IsValid))
+                    using (new EditorGUI.DisabledScope(take == null || !take.IsValid))
                     {
                         if (GUILayout.Button("Spawn Ghost"))
-                            GhostSpawner.Spawn(controller, _lastRecording, _loopGhosts, GhostTint);
+                            GhostSpawner.Spawn(controller, take, _loopGhosts, GhostTint, _ghostRig);
+                    }
+
+                    using (new EditorGUI.DisabledScope(NewestGhost(controller) == null))
+                    {
+                        if (GUILayout.Button("Bake Ghost Clip")) BakeGhostClip(controller);
                     }
 
                     if (GUILayout.Button("Clear Ghosts"))
@@ -449,7 +494,7 @@ namespace Kinema.MotionMatching.Editor
                     }
                 }
 
-                if (_lastRecording == null)
+                if (take == null)
                     MotionMatchingStyles.HelpRow("Record a take first - the in-game shortcuts (R / gamepad Select) feed the same recorders.", MessageType.Info);
             }
         }

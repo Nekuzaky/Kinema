@@ -35,6 +35,9 @@ namespace Kinema.MotionMatching.Samples
 
         [SerializeField] private Color _ghostColor = new Color(0.2f, 0.9f, 1f, 1f);
 
+        [Tooltip("Optional: build ghosts on this Humanoid model instead of cloning the player.")]
+        [SerializeField] private GameObject _ghostRig;
+
         public bool IsRecording => _sessionRecorder.IsRecording;
         public int GhostCount { get { PruneGhosts(); return _ghosts.Count; } }
         public float LastTakeDuration => _lastRecording != null ? _lastRecording.Duration : 0f;
@@ -143,7 +146,7 @@ namespace Kinema.MotionMatching.Samples
                 return;
             }
 
-            GameObject ghost = GhostSpawner.Spawn(_controller, _lastRecording, _loopGhosts, _ghostColor);
+            GameObject ghost = GhostSpawner.Spawn(_controller, _lastRecording, _loopGhosts, _ghostColor, _ghostRig);
             if (ghost == null) return;
 
             PruneGhosts();

@@ -437,6 +437,15 @@ namespace Kinema.MotionMatching
             _locomotion = provider;
         }
 
+        /// <summary>
+        /// Points the controller at another Animator before it initializes - the ghost-on-a-different-rig
+        /// path, where the serialized reference still names the source character's Animator.
+        /// </summary>
+        public void SetAnimator(Animator animator)
+        {
+            _animator = animator;
+        }
+
         #endregion
 
         #region Tools and Utilities
