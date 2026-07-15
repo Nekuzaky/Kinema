@@ -4,6 +4,30 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.2] - 2026-07-15
+
+Audit pass over the v1.13-v1.14 code, adversarial reading rather than new features.
+
+### Fixed
+- Idle pruning compared each candidate frame against the wrong frame: the "last kept" index belongs
+  to the output list but was dereferenced into the input list. The two agree until the first removal,
+  then drift further apart with every one, so keep/drop decisions were made against increasingly
+  unrelated poses. Now reads the output list; three tests pin the semantics (identical idles
+  collapse, comparison target is the last KEPT frame, moving frames are never pruned).
+
+### Audited clean
+- Live pose query: normalization and character-space handling match the bake exactly (both sides
+  include root velocity in bone velocities).
+- Foot phase: circular distance and absence gates correct in the Burst job; lead-in/tail extension
+  handles negative offsets; -1 sentinel respected end to end.
+- Critical-spring prediction: transient and its closed-form integral verified against the math.
+- KD-tree invalidation on weight change; bake pipeline ordering (prune -> mirror -> phases) sound;
+  time-to-frame mapping is a binary search on real frame times, correct under pruning gaps.
+
+### Known bias (documented, unchanged)
+- Deviation-triggered search measures deviation in the character's local frame, so self-rotation
+  contributes to it; bounded by the v1.14.1 cooldown. Left alone until measured.
+
 ## [1.14.1] - 2026-07-15
 
 ### Fixed

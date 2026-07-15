@@ -194,7 +194,7 @@ namespace Kinema.MotionMatching.Editor
         /// search toward standing still and pay their cost on every single search. Cycle-carrying
         /// motion is untouched: any frame with real root speed is always kept.
         /// </summary>
-        private static void PruneIdleDuplicates(FeatureSchema schema, List<float> features,
+        internal static void PruneIdleDuplicates(FeatureSchema schema, List<float> features,
             List<byte> contacts, List<ulong> tags, List<MotionFrameInfo> frames, List<MotionClipEntry> clipEntries)
         {
             int dim = schema.Dimension;
@@ -230,7 +230,10 @@ namespace Kinema.MotionMatching.Editor
                             float delta = 0f;
                             for (int i = poseStart; i < dim; i++)
                             {
-                                float d = features[row + i] - features[lastKeptRow + i];
+                                // lastKeptRow indexes keptFeatures, not the source list: the two
+                                // diverge at the first removal, and reading the source here compared
+                                // each candidate against a progressively wrong frame.
+                                float d = features[row + i] - keptFeatures[lastKeptRow + i];
                                 delta += d * d;
                             }
                             keep = Mathf.Sqrt(delta) > MinPoseDelta;
