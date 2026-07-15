@@ -11,9 +11,13 @@ If you discover a security vulnerability in Kinema (for example, something in th
 To report a vulnerability:
 
 1. Open a [private security advisory](../../security/advisories/new) on this repository, if available to you, or
-2. Contact the maintainer directly through GitHub rather than filing a public issue, and include steps to reproduce, the affected version, and any relevant logs.
+2. Contact the maintainer directly via [nekuzaky.com/contact](https://nekuzaky.com/contact) rather than filing a public issue, and include steps to reproduce, the affected version, and any relevant logs.
 
 Please avoid disclosing the issue publicly until it has been reviewed and, if applicable, a fix has been released.
+
+## Contact
+
+For general bug reports, questions, or anything else, you can also reach out via [nekuzaky.com/contact](https://nekuzaky.com/contact).
 
 ## What to Expect
 
