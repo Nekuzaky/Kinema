@@ -8,7 +8,7 @@
 [![X (Twitter)](https://img.shields.io/badge/X-@nekuzaky-000000?logo=x)](https://twitter.com/nekuzaky)
 [![Bluesky](https://img.shields.io/badge/Bluesky-@nekuzaky-0285FF?logo=bluesky&logoColor=white)](https://bsky.app/profile/nekuzaky.bsky.social)
 [![TikTok](https://img.shields.io/badge/TikTok-@nekuzaky-000000?logo=tiktok&logoColor=white)](https://www.tiktok.com/@nekuzaky)
-[![Patreon](https://img.shields.io/badge/Patreon-nekuzaky-F96854?logo=patreon&logoColor=white)](https://www.patreon.com/nekuzaky)
+[![Website](https://img.shields.io/badge/Website-nekuzaky.com-000000?logo=googlechrome&logoColor=white)](https://nekuzaky.com/)
 
 Data-driven motion matching locomotion for Unity. An offline bake pipeline turns `AnimationClip`s
 into a normalized feature database; a Burst-compiled runtime queries it every few frames and blends
@@ -20,7 +20,7 @@ also a Unity project you can open to try the demo directly.
 
 ## Support this project
 
-Kinema is free and open source. If it saves you time on your project, consider [becoming a sponsor](https://github.com/sponsors/Nekuzaky) or [supporting on Patreon](https://www.patreon.com/nekuzaky) - it directly funds continued development, bug fixes, and new features. See [FUNDING.yml](.github/FUNDING.yml) for all supported ways to contribute.
+Kinema is free and open source. If it saves you time on your project, consider [becoming a sponsor](https://github.com/sponsors/Nekuzaky) or checking out [my website](https://nekuzaky.com/). Sponsorships directly fund continued development, bug fixes, and new features. See [FUNDING.yml](.github/FUNDING.yml) for all supported ways to contribute.
 
 Follow development and updates on [X/Twitter](https://twitter.com/nekuzaky), [Bluesky](https://bsky.app/profile/nekuzaky.bsky.social), and [TikTok](https://www.tiktok.com/@nekuzaky).
 
