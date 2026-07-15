@@ -523,6 +523,7 @@ namespace Kinema.MotionMatching.Editor
 
         [SerializeField] private int _snapshotAge;
         [SerializeField] private bool _previewMode;
+        [SerializeField] private int _pinnedSnapshotAge = -1; // -1 = nothing pinned
         private MotionMatchingController _previewedController;
 
         /// <summary>
@@ -569,6 +570,51 @@ namespace Kinema.MotionMatching.Editor
                     Color c = gi < 2 ? MotionMatchingStyles.TrajectoryDesired : MotionMatchingStyles.TrajectoryCandidate;
                     MotionMatchingStyles.CostBar(((FeatureGroup)gi).ToDisplayName(), s.GroupCosts[gi], max, c);
                 }
+
+                DrawSnapshotDiff(recorder, s);
+            }
+        }
+
+        /// <summary>
+        /// Pin the currently-scrubbed decision, scrub elsewhere, and read what changed between the
+        /// two (deltas are current minus pinned). Pin ages are relative to the newest snapshot, so
+        /// while play mode keeps recording, both endpoints keep sliding back in time together -
+        /// pinning is for paused/preview inspection, which is when the rewind tooling is used anyway.
+        /// </summary>
+        private void DrawSnapshotDiff(SearchSnapshotRecorder recorder, SearchSnapshot current)
+        {
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                bool pinned = _pinnedSnapshotAge >= 0;
+                if (GUILayout.Button(pinned ? $"Pinned: {_pinnedSnapshotAge} back" : "Pin for diff", EditorStyles.miniButton, GUILayout.Width(110)))
+                    _pinnedSnapshotAge = pinned ? -1 : _snapshotAge;
+            }
+
+            if (_pinnedSnapshotAge < 0) return;
+            if (_pinnedSnapshotAge >= recorder.Count) { _pinnedSnapshotAge = -1; return; }
+            if (_pinnedSnapshotAge == _snapshotAge) return;
+
+            SearchSnapshot pinnedSnapshot = recorder.GetByAge(_pinnedSnapshotAge);
+            SearchSnapshotDiff diff = SearchSnapshotDiff.Compute(pinnedSnapshot, current);
+            if (diff == null) return;
+
+            using (MotionMatchingStyles.BeginSection($"Diff vs pinned ({_pinnedSnapshotAge} back -> {_snapshotAge} back)"))
+            {
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    MotionMatchingStyles.KeyValue("Time", $"{diff.TimeDelta:+0.00;-0.00} s");
+                    if (diff.FrameChanged) MotionMatchingStyles.StatusPill("FRAME", MotionMatchingStyles.Accent);
+                    if (diff.ClipChanged) MotionMatchingStyles.StatusPill("CLIP", MotionMatchingStyles.Accent);
+                    if (diff.JumpedA != diff.JumpedB) MotionMatchingStyles.StatusPill(diff.JumpedB ? "NOW JUMPS" : "NO JUMP", MotionMatchingStyles.TrajectoryCandidate);
+                }
+
+                MotionMatchingStyles.KeyValue("Total cost", $"{diff.TotalCostDelta:+0.000;-0.000}");
+                MotionMatchingStyles.KeyValue("Moved most", $"{((FeatureGroup)diff.DominantGroup).ToDisplayName()} ({diff.GroupCostDeltas[diff.DominantGroup]:+0.000;-0.000})");
+                for (int gi = 0; gi < diff.GroupCostDeltas.Length && gi < FeatureGroupExtensions.Count; gi++)
+                    MotionMatchingStyles.KeyValue(((FeatureGroup)gi).ToDisplayName(), diff.GroupCostDeltas[gi].ToString("+0.000;-0.000"));
+
+                MotionMatchingStyles.KeyValue("Character moved", $"{diff.CharacterDistance:F2} m");
+                MotionMatchingStyles.KeyValue("Intent shift", $"{diff.DesiredTrajectoryDelta:F2} m avg/point");
             }
         }
 

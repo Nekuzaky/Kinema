@@ -1,32 +1,22 @@
 {
-    "name": "Kinema.MotionMatching.Tests.Editor",
+    "name": "Kinema.MotionMatching.Tests.Runtime",
     "rootNamespace": "Kinema.MotionMatching.Tests",
     "references": [
         "Kinema.MotionMatching.Runtime",
-        "Kinema.MotionMatching.Editor",
-        "Kinema.MotionMatching.Timeline",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],
-    "includePlatforms": [
-        "Editor"
-    ],
+    "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": true,
     "precompiledReferences": [
         "nunit.framework.dll"
     ],
-    "autoReferenced": true,
+    "autoReferenced": false,
     "defineConstraints": [
         "UNITY_INCLUDE_TESTS"
     ],
-    "versionDefines": [
-        {
-            "name": "com.unity.timeline",
-            "expression": "",
-            "define": "KINEMA_TIMELINE"
-        }
-    ],
+    "versionDefines": [],
     "noEngineReferences": false
 }

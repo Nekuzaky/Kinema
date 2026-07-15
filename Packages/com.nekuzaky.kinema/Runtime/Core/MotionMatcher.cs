@@ -158,7 +158,65 @@ namespace Kinema.MotionMatching
             };
 
             job.Schedule(_chunkCount, 1).Complete();
+            return CompleteChunks(query);
+        }
 
+        /// <summary>
+        /// Non-blocking half of <see cref="Search"/>: schedules the same Burst job but does not wait
+        /// for it, so a caller managing several matchers (one per on-screen character, say) can
+        /// schedule all of them first and let Burst's worker threads run their chunks in parallel,
+        /// then <see cref="CompleteSearch"/> each in turn - instead of every matcher blocking the main
+        /// thread in series the way <see cref="Search"/> does. No controller uses this yet
+        /// (per-character batching would be a new orchestrating component); it exists so that
+        /// opportunity can be profiled and, later, built on. Must be paired with exactly one
+        /// <see cref="CompleteSearch"/> call using the same <paramref name="query"/> before this
+        /// matcher's <see cref="Search"/>/<see cref="ScheduleSearch"/> is called again - the chunk
+        /// result buffers are reused, not per-call. Always uses the Burst job (ignores
+        /// <see cref="Acceleration"/> == KdTree, which is synchronous managed code with nothing to
+        /// schedule) - batching only makes sense for the parallel path.
+        /// </summary>
+        public JobHandle ScheduleSearch(
+            MotionMatchingQuery query, int ignoreFrame = -1, int ignoreRadius = 0,
+            ulong requiredTags = 0ul, ulong excludedTags = 0ul)
+        {
+            bool phaseActive = _phaseWeight > 0f && query.FootPhase >= 0f && _database.HasFootPhases;
+            _nativeQuery.CopyFrom(query.Values);
+
+            var job = new SearchJob
+            {
+                Features = _nativeFeatures,
+                Weights = _nativeWeights,
+                Query = _nativeQuery,
+                Tags = _nativeTags,
+                RequiredTags = requiredTags,
+                ExcludedTags = excludedTags,
+                Phases = _nativePhases,
+                QueryPhase = phaseActive ? query.FootPhase : -1f,
+                PhaseWeight = phaseActive ? _phaseWeight : 0f,
+                Dimension = _database.Dimension,
+                FrameCount = _database.FrameCount,
+                ChunkSize = ChunkSize,
+                IgnoreStart = ignoreFrame >= 0 ? ignoreFrame - ignoreRadius : -1,
+                IgnoreEnd = ignoreFrame >= 0 ? ignoreFrame + ignoreRadius : -1,
+                BestCost = _chunkBestCost,
+                BestFrame = _chunkBestFrame
+            };
+
+            return job.Schedule(_chunkCount, 1);
+        }
+
+        /// <summary>Completes a <see cref="ScheduleSearch"/> handle and reduces its chunk results,
+        /// exactly like the tail of <see cref="Search"/>. <paramref name="query"/> must be the same
+        /// query instance passed to the matching <see cref="ScheduleSearch"/> call (needed to build
+        /// the per-group cost breakdown in the result).</summary>
+        public MotionMatchResult CompleteSearch(JobHandle handle, MotionMatchingQuery query)
+        {
+            handle.Complete();
+            return CompleteChunks(query);
+        }
+
+        private MotionMatchResult CompleteChunks(MotionMatchingQuery query)
+        {
             int bestFrame = -1;
             float bestCost = float.MaxValue;
             for (int c = 0; c < _chunkCount; c++)

@@ -78,6 +78,83 @@ namespace Kinema.MotionMatching.Editor
             // still order-dependent and none of them can be trusted.
             if (real != null)
                 Measure(report, real, $"baked (re-measured last)", SearchAcceleration.BurstLinear);
+
+            MeasureConcurrent(report);
+        }
+
+        /// <summary>
+        /// TODO.md: "Not yet profiled: many characters searching concurrently in one frame (the
+        /// benchmark times one matcher in isolation)." This is that profiling: N independent matchers
+        /// (own database copy each, like N on-screen characters), compared today's actual behaviour -
+        /// every controller's <see cref="MotionMatcher.Search"/> blocking the main thread in series -
+        /// against scheduling all N Burst jobs first and completing them together via
+        /// <see cref="MotionMatcher.ScheduleSearch"/>/<see cref="MotionMatcher.CompleteSearch"/>, which
+        /// lets worker threads actually run more than one character's chunks at once. Whether a
+        /// controller should adopt batching is a design question for whoever needs the headroom this
+        /// shows exists; not attempted here.
+        /// </summary>
+        private static void MeasureConcurrent(StringBuilder report)
+        {
+            report.AppendLine("[Kinema]   -- concurrent (N independent characters, own database copy each) --");
+
+            const int Frames = 5_000; // "where the demo and most projects sit" per the scaling section above.
+            const int Dimension = 44;
+            const int Trials = 50;
+
+            foreach (int n in new[] { 8, 32, 128 })
+            {
+                var matchers = new MotionMatcher[n];
+                var queries = new MotionMatchingQuery[n];
+                var databases = new MotionMatchingDatabase[n];
+                try
+                {
+                    for (int i = 0; i < n; i++)
+                    {
+                        databases[i] = CreateSynthetic(Frames, Dimension);
+                        matchers[i] = new MotionMatcher(databases[i], FeatureWeights.Default);
+                        queries[i] = new MotionMatchingQuery(databases[i].Schema);
+                        float[] features = databases[i].Features;
+                        for (int d = 0; d < databases[i].Dimension; d++)
+                            queries[i].Values[d] = features[d] + 0.05f;
+                        matchers[i].Search(queries[i]); // warm up Burst compile before timing either path.
+                    }
+
+                    var watch = new Stopwatch();
+
+                    // Today: every matcher blocks the main thread in turn.
+                    watch.Restart();
+                    for (int t = 0; t < Trials; t++)
+                        for (int i = 0; i < n; i++)
+                            matchers[i].Search(queries[i]);
+                    watch.Stop();
+                    double sequentialMs = watch.Elapsed.TotalMilliseconds / Trials;
+
+                    // Batched: schedule all N first, complete all N after.
+                    var handles = new Unity.Jobs.JobHandle[n];
+                    watch.Restart();
+                    for (int t = 0; t < Trials; t++)
+                    {
+                        for (int i = 0; i < n; i++)
+                            handles[i] = matchers[i].ScheduleSearch(queries[i]);
+                        for (int i = 0; i < n; i++)
+                            matchers[i].CompleteSearch(handles[i], queries[i]);
+                    }
+                    watch.Stop();
+                    double batchedMs = watch.Elapsed.TotalMilliseconds / Trials;
+
+                    report.AppendLine(
+                        $"[Kinema]   {n,4} characters   sequential {sequentialMs,7:F2} ms/frame | " +
+                        $"batched {batchedMs,7:F2} ms/frame | {sequentialMs / System.Math.Max(batchedMs, 0.001d),5:F2}x");
+                }
+                finally
+                {
+                    for (int i = 0; i < n; i++)
+                    {
+                        matchers[i]?.Dispose();
+                        if (databases[i] != null) UnityEngine.Object.DestroyImmediate(databases[i]);
+                    }
+                }
+            }
         }
 
         #endregion

@@ -205,6 +205,11 @@ namespace Kinema.MotionMatching
             _outputTarget = active ? 1f : 0f;
             _outputFade = Mathf.Max(0.01f, fadeTime);
         }
+        /// <summary>Whether <see cref="SetMatchingActive"/> was last told to fade in (target weight 1)
+        /// rather than out. Reads the target, not the currently-blended weight, so it flips the
+        /// instant a fade starts rather than only once it completes.</summary>
+        public bool IsMatchingActive => _outputTarget > 0.5f;
+
         public int CurrentClipIndex => _initialized ? _slotClipIndex[_activeSlot] : -1;
         public float CurrentClipTime => _initialized ? LocalClipTime(_slotClipIndex[_activeSlot], _slotTime[_activeSlot]) : 0f;
 
@@ -216,6 +221,17 @@ namespace Kinema.MotionMatching
                 _weights = value;
                 _matcher?.UpdateWeights(_weights);
             }
+        }
+
+        /// <summary>
+        /// Seconds between database searches, live-adjustable. Wider than the inspector's 0.02-0.5
+        /// range so LOD systems (e.g. <see cref="MotionMatchingLOD"/>) can push a distant character's
+        /// cadence well below 2 Hz without fighting the serialized field's slider clamp.
+        /// </summary>
+        public float SearchInterval
+        {
+            get => _searchInterval;
+            set => _searchInterval = Mathf.Clamp(value, 0.02f, 2f);
         }
 
         /// <summary>World-space desired horizontal velocity, used when no provider is attached.</summary>
@@ -697,6 +713,48 @@ namespace Kinema.MotionMatching
 
         private void RunSearch()
         {
+            PrepareSearchQuery();
+
+            if (SearchScheduler != null)
+            {
+                // Batched path: hand the scheduled job to the scheduler, which completes it later
+                // this frame (after every registered controller has scheduled its own). A jump
+                // decided by a batched search therefore lands one graph evaluation later than the
+                // synchronous path - at a 10 Hz search rate that is a sub-two-millisecond delay in
+                // exchange for the searches running concurrently instead of serially.
+                Unity.Jobs.JobHandle handle = _matcher.ScheduleSearch(
+                    _query, requiredTags: RequiredTags, excludedTags: ExcludedTags);
+                SearchScheduler.EnqueueScheduledSearch(this, handle);
+                return;
+            }
+
+            MotionMatchResult result = _matcher.Search(_query, requiredTags: RequiredTags, excludedTags: ExcludedTags);
+            ApplySearchOutcome(result);
+        }
+
+        /// <summary>
+        /// Optional batching hook. When set, the controller's periodic search is scheduled through
+        /// <see cref="MotionMatcher.ScheduleSearch"/> and handed to this scheduler instead of being
+        /// completed synchronously inside Tick - the scheduler (see
+        /// <see cref="MotionMatchingSearchBatch"/>) completes every registered controller's job after
+        /// all of them have been scheduled, so N characters' Burst searches run concurrently.
+        /// </summary>
+        public IMotionSearchScheduler SearchScheduler { get; set; }
+
+        /// <summary>Completes a search this controller previously scheduled through
+        /// <see cref="SearchScheduler"/> and applies its outcome. Called by the scheduler, same
+        /// frame, after all registered controllers have scheduled.</summary>
+        public void CompleteScheduledSearch(Unity.Jobs.JobHandle handle)
+        {
+            if (!_initialized) { handle.Complete(); return; }
+            MotionMatchResult result = _matcher.CompleteSearch(handle, _query);
+            ApplySearchOutcome(result);
+        }
+
+        /// <summary>Builds the query for the current tick: trajectory intent, gait phase, and the
+        /// live (or frame-copied) pose. Shared by the synchronous and batched search paths.</summary>
+        private void PrepareSearchQuery()
+        {
             CharacterSpace space = CharacterSpace.FromTransform(transform);
 
             // Remember what this search answered, so deviation from it can trigger the next one.
@@ -717,8 +775,14 @@ namespace Kinema.MotionMatching
                 _query.SetPoseFromSkeleton(_database, space, _queryBoneWorldPositions, _queryBoneVelocities, _measuredVelocity);
             else
                 _query.SetPoseFromFrame(_database, currentFrame);
+        }
 
-            MotionMatchResult result = _matcher.Search(_query, requiredTags: RequiredTags, excludedTags: ExcludedTags);
+        /// <summary>Jump-or-continue decision on a search result. Shared tail of the synchronous and
+        /// batched paths; uses <see cref="_lastCurrentFrame"/> captured by
+        /// <see cref="PrepareSearchQuery"/> so both paths judge against the same reference frame.</summary>
+        private void ApplySearchOutcome(MotionMatchResult result)
+        {
+            int currentFrame = _lastCurrentFrame;
 
             // Cost of simply continuing the current clip a little further.
             int continuationFrame = ContinuationFrame(currentFrame);

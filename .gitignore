@@ -119,3 +119,7 @@ InitTestScene*.unity*
 
 # Session recordings are local captures, not project source.
 /[Aa]ssets/SessionRecording*.asset*
+
+# Local test/coverage run output (batchmode -runTests / -enableCodeCoverage).
+/CodeCoverage/
+/*-results.xml

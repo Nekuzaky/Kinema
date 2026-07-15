@@ -1,0 +1,23 @@
+{
+    "name": "Kinema.MotionMatching.Timeline",
+    "rootNamespace": "Kinema.MotionMatching.Timeline",
+    "references": [
+        "Kinema.MotionMatching.Runtime",
+        "Unity.Timeline"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [
+        {
+            "name": "com.unity.timeline",
+            "expression": "",
+            "define": "KINEMA_TIMELINE"
+        }
+    ],
+    "noEngineReferences": false
+}

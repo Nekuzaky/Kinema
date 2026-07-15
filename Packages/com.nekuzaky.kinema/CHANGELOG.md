@@ -4,6 +4,87 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.18.0] - 2026-07-15
+
+### Added
+- `Kinema.MotionMatching.Timeline` (new optional assembly, only compiles with `com.unity.timeline`
+  installed): `MotionMatchingTrack` + `MotionMatchingClipAsset` extend `SetMatchingActive` to
+  Timeline - a clip on the track fades matching in for its duration, restoring the prior state once
+  no clip on the track is active; stays active across an overlapping crossfade between two clips.
+  `MotionMatchingController.IsMatchingActive` added (previously no way to read the current
+  active/inactive target). Mixer logic verified by building a real `PlayableGraph` and calling
+  `Evaluate()` directly - no Timeline asset or window needed.
+- `BlendSpaceMath` + `MotionMatchingBlendSpace`: 2D Gradient Band Interpolation weighting, grid
+  generation and feature-row blending for MxM-style blend spaces - unit tested, **not yet wired
+  into the baker** (playback replays the matched frame's original `AnimationClip`, so a synthetic
+  grid point needs a real baked clip to be playable, not just a blended feature row to be matchable;
+  see TODO.md).
+- `MotionMatcher.ScheduleSearch`/`CompleteSearch`: non-blocking split of `Search`, so several
+  matchers' Burst jobs can be scheduled together and completed together instead of each blocking
+  the main thread in series. Addresses the "many characters searching concurrently" profiling gap -
+  `Tools > Kinema > Benchmark Search` now measures it (8/32/128 synthetic characters; ~1.7-1.8x
+  faster batched than sequential in local measurements). No controller uses this yet.
+
+- First PlayMode tests (`Tests/Runtime`, 4 tests): a real controller on a synthetic database wrapped
+  around a procedurally-authored `AnimationClip` - initialization via `SwitchDatabase`, scripted
+  intent sweeps with frame/clip mapping asserted in range, the `SetMatchingActive` fade surviving
+  ticking, disable/re-enable teardown. Headless: `-runTests -testPlatform PlayMode` (no
+  `-nographics`).
+- `GaitClassifier` + `Tools > Kinema > Log Auto-Tag Suggestions`: speed/turn/idle detection from
+  the motion itself (denormalized root velocity: speed thresholds for idle/walk/run, direction
+  change in deg/s for turning, flicker smoothing, consolidated per-clip ranges). Suggestions are
+  logged, never written to a config. Verified against the baked Opsive set: detected turn spans
+  line up with the turn-named clips without reading any names.
+- Snapshot diffing (Debug tab > History): "Pin for diff" pins the scrubbed decision; scrubbing
+  elsewhere then shows deltas - per-group costs with the biggest mover called out, frame/clip/jump
+  changes, character distance, mean intent shift. Math in `SearchSnapshotDiff.Compute` (runtime,
+  unit tested); panel is plain read-only IMGUI.
+- First standalone-player verification (`Assets/StandaloneSmokeTest/` in the repo, not the package):
+  headless Win64 build + a bootstrap that ticks a real controller 60 frames in the built player and
+  prints a `[KinemaSmoke]` verdict. Verified locally: PASS (Burst AOT, live PlayableGraph, real
+  searches, outside the Editor). See TODO.md for the URP-migration and antivirus hurdles hit on the
+  way.
+
+- `MotionMatchingSearchBatch` + `MotionMatchingController.SearchScheduler`: opt-in cross-character
+  search batching. Controllers registered with the batch schedule their periodic search in Update
+  and the batch completes them all in LateUpdate, so simultaneous searches overlap on Burst worker
+  threads (the ~1.7x the benchmark measures) instead of each blocking the main thread in turn.
+  Batched jumps land one graph evaluation later than synchronous ones - documented on the hook.
+  Internally `RunSearch` split into `PrepareSearchQuery`/`ApplySearchOutcome`, shared by both paths.
+- PlayMode tests for motion events: root-warping lands on its target by contact time (position +
+  yaw, fixed timestep), events end on their own and matching resumes, root motion stays bounded.
+
+95/95 EditMode tests (28 new: `MotionMatchingTimelineTests` builds a real `PlayableGraph` and
+evaluates it; `BlendSpaceMathTests` covers the interpolation/grid/blend math;
+`MotionMatcherScheduleSearchTests` checks the batched path against synchronous `Search`;
+`SearchSnapshotDiffTests` covers the diff math; `GaitClassifierTests` covers gait classification on
+hand-authored velocity tracks) plus 9/9 PlayMode tests (controller lifecycle, motion-event warping,
+search-batch routing and fallback).
+
+## [1.17.0] - 2026-07-15
+
+### Added
+- `MotionMatchingLOD`: degrades `MotionMatchingController.SearchInterval` with distance from a
+  reference transform (`Camera.main` by default) via a piecewise-linear multiplier over configurable
+  distance tiers, recomputed at a throttled rate rather than every frame. Addresses the "Animation
+  LOD" gap in TODO.md. `MotionMatchingController.SearchInterval` is now also a public read/write
+  property (previously only a serialized field clamped to the inspector's 0.02-0.5 slider range) so
+  LOD and similar systems can drive it outside that range.
+- Code coverage: `com.unity.testtools.codecoverage` added to `Packages/manifest.json`. Verified
+  locally via `-enableCodeCoverage -coverageOptions "generateAdditionalMetrics;generateHtmlReport"`
+  (OpenCover XML + HTML report); wired into the CI workflow below.
+- `.github/workflows/tests.yml` re-added (EditMode tests + coverage report as build artifacts).
+  Needs a `UNITY_LICENSE` repository secret set on the GitHub repo before it runs green - documented
+  in the workflow file; not verifiable from a local checkout.
+- `CONTRIBUTING.md`: setup, pre-PR checklist (run EditMode tests; say what you verified by eye vs.
+  couldn't for the areas with no automated coverage), where things live in the package.
+
+63/63 EditMode tests (10 new: `MotionMatchingLODTests` covers the distance-to-multiplier math
+directly - the only part of the LOD system judgeable without a running scene;
+`MotionMatchingControllerTests` covers the new `SearchInterval` clamp). Whether a given distance-tier
+configuration still reads as acceptable on screen has not been judged visually - tune per project and
+playtest; flagged in TODO.md.
+
 ## [1.16.0] - 2026-07-15
 
 ### Added

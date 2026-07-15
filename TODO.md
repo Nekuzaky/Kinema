@@ -24,53 +24,126 @@ left, roughly in priority order within each section.
       search against the baked database and synthetic clustered sets up to 400k frames; see the
       README/changelog for numbers. Confirmed: BurstLinear wins below ~25k frames (where the demo
       and most projects sit), the KD-tree only earns its keep past ~100k.
-- [ ] Not yet profiled: many characters searching concurrently in one frame (the benchmark times
-      one matcher in isolation), and standalone-build numbers (everything measured so far is
-      in-editor with Burst forced synchronous).
-- [ ] Animation LOD: degrade search cadence with camera distance for crowds of matched
-      characters. Not implemented.
+- [x] **Profiled: many characters searching concurrently.** `MotionMatcher.ScheduleSearch`/
+      `CompleteSearch` split the existing `Search` into a non-blocking schedule and a completion
+      step, so N matchers' Burst jobs can run concurrently instead of each blocking the main thread
+      in series (today's actual behaviour - no controller batches yet, this is a building block).
+      `Tools > Kinema > Benchmark Search` now measures both at N = 8/32/128 synthetic characters:
+      batched came out ~1.7-1.8x faster than sequential at every N tested here. Correctness (batched
+      result == synchronous `Search` result, including tag/ignore-range filters) is unit tested.
+      **Adopted**: `MotionMatchingSearchBatch` (add to the scene, assign controllers or let it
+      auto-collect) routes every registered controller's periodic search through
+      schedule-in-Update / complete-in-LateUpdate, so simultaneous searches overlap on worker
+      threads. Trade-off: a batched jump lands one graph evaluation later than the synchronous path
+      (documented on `MotionMatchingController.SearchScheduler`). PlayMode-tested: routing,
+      soundness under ticking, clean synchronous fallback when the batch is disabled.
+- [ ] Not yet profiled: standalone-build numbers (everything measured so far is in-editor with Burst
+      forced synchronous).
+- [x] **Animation LOD** - `MotionMatchingLOD` degrades `MotionMatchingController.SearchInterval`
+      with distance from camera (piecewise-linear multiplier over configurable distance tiers,
+      recomputed at a throttled rate, not per frame). The distance-to-multiplier math is unit
+      tested (`MotionMatchingLODTests`); whether the degraded cadence still reads as acceptable on
+      screen for a given tier configuration has not been judged visually - tune tiers per project
+      and playtest.
 
 ## Runtime behaviour
 
-- [ ] **No PlayMode test coverage.** EditMode tests (see [README](README.md#testing)) cover
-      schema/database/matcher logic against synthetic data, but the PlayableGraph, inertializer,
-      foot lock IK, motion events and warping have only been judged visually against recorded
-      playtest sessions - no automated regression coverage. Candidates: PlayMode tests driving a
-      controller through scripted intent and asserting root motion / frame selection stays within
-      expected bounds.
-- [ ] **Never built as a standalone player.** Everything so far ran in the Editor. Burst
-      compilation, Input System bindings and the Playables graph should all work in a build, but
-      this hasn't been confirmed on Windows/Mac/Linux/mobile/console.
+- [x] **First PlayMode test coverage** - `Tests/Runtime/MotionMatchingControllerPlayModeTests`
+      drives a real controller (live PlayableGraph, real Update loop and searches) on a synthetic
+      database wrapped around a procedurally-authored AnimationClip: initialization via
+      `SwitchDatabase`, ~60 ticks of scripted intent sweeps with frame/clip mapping asserted in
+      range, the `SetMatchingActive` fade surviving ticking, and disable/re-enable teardown/rebuild.
+      Run headless: `-runTests -testPlatform PlayMode` (no `-nographics`).
+- [x] **PlayMode coverage for motion events + root-motion bounds** -
+      `Tests/Runtime/MotionEventPlayModeTests`: event root-warping measurably lands on its target
+      by contact time (position and yaw, fixed timestep via `Time.captureDeltaTime`), the event
+      ends on its own at clip end and matching resumes, and root motion stays bounded under
+      constant intent. Test-authoring gotcha discovered on the way, worth remembering: a synthetic
+      clip must never animate the ROOT transform - any root curve on any clip connected to the
+      mixer keeps that property graph-owned even at weight 0, and every Evaluate stomps the event
+      warp's transform writes (real mocap carries root motion through the Animator instead).
+- [ ] PlayMode coverage still missing for: inertializer output and foot lock IK - both need a
+      Humanoid rig with an IK pass, which the synthetic no-rig setup can't provide.
+- [x] **Built and smoke-tested as a standalone Windows player.** `Assets/StandaloneSmokeTest/`:
+      an editor build script (`BuildSmokeTest.Build`, headless via `-executeMethod`) builds a
+      Win64 player around a bootstrap scene that assembles the synthetic controller setup (same as
+      the PlayMode tests), ticks 60 real frames - Burst compiled AOT, live PlayableGraph, real
+      searches - and prints a greppable `[KinemaSmoke] PASS/FAIL` verdict before quitting. Verified
+      locally: build succeeded, player ran headless, verdict PASS. Two machine-specific hurdles hit
+      on the way, worth knowing: (1) URP refuses to build while its GlobalSettings asset is pending
+      version migration - the build script now saves the migrated asset first; if the installed
+      Editor is *older* than the one that authored the asset (here: 6000.3.2f1 vs .13f1) the strict
+      equality check can only be satisfied by hand-editing `m_AssetVersion` (done temporarily for
+      this verification, then reverted). (2) FortiClient's real-time scan intermittently breaks
+      ILPP with `DirectoryNotFoundException` under `C:\Program Files\Fortinet\...` - a retry got
+      past it. Mac/Linux/mobile/console remain unverified; input in a real build (the demo's Input
+      System bindings) is not exercised by this smoke test.
 - [ ] Events and overlay layers have exactly one demonstrated use case each (vault; none for
       overlays). Untested against overlapping events, event-during-event, or multiple concurrent
       overlay layers.
 
 ## Tooling
 
-- [ ] **Snapshot debugger has no state diffing.** The rewind (`PreviewSnapshot`/`StopPreview`)
-      replays one recorded moment exactly, but there's no side-by-side comparison between two
-      snapshots or a way to step frame-by-frame within a single decision.
+- [x] **Snapshot state diffing** - "Pin for diff" in the Debug tab's History section: pin the
+      scrubbed decision, scrub elsewhere, read the delta (per-group cost deltas with the
+      biggest mover called out, frame/clip-changed flags, jump-flag change, character distance,
+      mean desired-trajectory shift). The math (`SearchSnapshotDiff.Compute`, runtime assembly) is
+      unit tested; the IMGUI panel itself is eyeball-verified like the rest of the window. Pin ages
+      are relative to the newest snapshot, so they only hold still while recording is paused
+      (preview mode) - fine for the rewind workflow, noted in the code.
+- [ ] Snapshot debugger still can't step frame-by-frame *within* a single decision (sub-decision
+      playback interpolation).
 - [ ] Frame Inspector and Tag timeline have no keyboard navigation or search/filter for large
       clip counts.
 
 ## Feature scope not started
 
-- [ ] Blend space integration (MxM-style: blend spaces as matchable data).
+- [ ] **Blend space integration (MxM-style)** - partial. `BlendSpaceMath` (2D Gradient Band
+      Interpolation weighting, grid generation, feature-row blending - the same technique Unity's own
+      Freeform Cartesian blend trees use) and `MotionMatchingBlendSpace` (authoring asset: source
+      clips + 2D positions) are done and unit tested. NOT wired into the baker: playback
+      (`MotionMatchingController.SetSlotClip`) replays the matched frame's original `AnimationClip`,
+      not the baked feature row, so a synthetic grid point needs a real baked `AnimationClip` to be
+      *playable*, not just a blended feature row to be *matchable*. Finishing this means extending
+      `Editor/Baking/PoseClipBaker.cs` (already bakes a recording to a clip) to bake a blended pose
+      per grid point, which is new Playable-graph plumbing with no way to confirm the result looks
+      right without opening the Editor - stopped here rather than shipped unverified.
 - [x] Retargeting through Humanoid so one database serves multiple skeletons - the ghost-on-a-
       different-rig path and the Director's one-click rig swap both do this (copy settings, keep
       the database, retarget onto the new body).
 - [x] Auto-tagging from clip naming conventions (Opsive pack setup: 74 clips sorted into 12 tags
-      from their file names, no ranges painted by hand). Speed/turn/idle detection from motion
-      itself, rather than naming convention, is still not implemented.
+      from their file names, no ranges painted by hand).
+- [x] **Speed/turn/idle detection from motion itself** - `GaitClassifier` (runtime, unit tested)
+      classifies every baked frame from the database's denormalized root velocity (idle/walk/run by
+      speed thresholds, turning by direction change in deg/s), smooths single-frame flicker and
+      returns consolidated per-clip ranges. `Tools > Kinema > Log Auto-Tag Suggestions`
+      (headless-runnable) logs the proposals for the richest baked database - verified on the baked
+      Opsive set: detected `Walk+Turn` spans line up with the `...TurnLeft180`-style clip names it
+      never reads. Suggestions only: nothing writes to a config. Follow-up if wanted: an "apply"
+      button in the Tags tab that turns accepted suggestions into `ClipTagTrack` ranges.
 - [ ] Learned Motion Matching (Ubisoft La Forge): decompressor / stepper / projector networks
       replacing the database at runtime for large memory savings. The normalized, well-typed data
       model should make training-data export straightforward when this is picked up.
-- [ ] Interop with Timeline / cutscene tooling beyond the basic Mecanim-fade (`SetMatchingActive`).
+- [x] **Timeline / cutscene interop** - `Kinema.MotionMatching.Timeline` (separate optional assembly,
+      only compiles with `com.unity.timeline` installed): `MotionMatchingTrack` + `MotionMatchingClipAsset`
+      extend `SetMatchingActive` to Timeline - drop a clip on the track to fade matching in for its
+      duration, restoring the prior state when no clip on the track is active. Mixer logic (activation,
+      restore, and staying active across an overlapping crossfade between two clips) is tested by
+      building a real `PlayableGraph` and calling `Evaluate()` directly, no Timeline asset/window
+      needed. Not verified: how an authored clip's ease-in/ease-out reads in the Timeline window itself.
 
 ## Process
 
-- [x] EditMode automated tests (50 tests, `Tests/Editor`) - **done**.
-- [ ] CI workflow. Removed (was `.github/workflows/tests.yml`, GitHub Actions via game-ci) - never
-      ran green without a `UNITY_LICENSE` repository secret. Re-add once that's set up.
-- [ ] Code coverage measurement/reporting.
-- [ ] Contribution guidelines beyond the README's one-paragraph note.
+- [x] EditMode automated tests (63 tests, `Tests/Editor`) - **done**.
+- [x] **CI workflow re-added** - `.github/workflows/tests.yml`, GitHub Actions via game-ci,
+      EditMode tests + coverage report as artifacts. Still needs a `UNITY_LICENSE` repository
+      secret set by whoever owns the GitHub repo before it will run green (documented in the
+      workflow file) - cannot be verified from this environment.
+- [x] **Code coverage measurement/reporting** - `com.unity.testtools.codecoverage` added to
+      `Packages/manifest.json`. Verified locally: `-enableCodeCoverage -coverageOptions
+      "generateAdditionalMetrics;generateHtmlReport"` produces an OpenCover XML + HTML report
+      (`CodeCoverage/`, gitignored - it's run output, not source). Also wired into the CI workflow
+      above.
+- [x] **Contribution guidelines** - [CONTRIBUTING.md](CONTRIBUTING.md): setup, what to run before a
+      PR, where things live, and the "say what you verified by eye vs. couldn't" rule for the areas
+      that have no automated coverage.

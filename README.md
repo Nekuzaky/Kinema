@@ -51,9 +51,24 @@ the timed interval, idle-duplicate pruning at bake time.
 adaptation IK, stride warping, semantic tags (64-bit masks, filtered in the search job), motion
 events with root warping, mirrored variants, calibration profiles, multi-database switching,
 Mecanim interop.
+- `MotionMatchingLOD`: degrades a character's search cadence with distance from camera (piecewise-
+  linear multiplier over configurable distance tiers) for crowds of matched characters. Only touches
+  search interval, so playback and IK are unaffected.
+- Timeline integration (optional assembly, needs `com.unity.timeline`): a `MotionMatchingTrack`
+  fades matching in for the duration of its clips and restores the prior state after - cutscene to
+  gameplay handoff without scripting.
+- Cross-character search batching: drop a `MotionMatchingSearchBatch` in the scene and registered
+  controllers schedule their searches in Update and complete them together in LateUpdate, so
+  simultaneous searches overlap on Burst worker threads (~1.7x faster at 8-128 characters in local
+  measurements; see the benchmark). Built on `MotionMatcher.ScheduleSearch`/`CompleteSearch`.
+- `GaitClassifier`: proposes idle/walk/run/turn tag ranges from the baked motion itself
+  (`Tools > Kinema > Log Auto-Tag Suggestions`), no naming conventions involved.
 
 **Editor window** (`Tools > Kinema > Motion Matching Window`, Ctrl+Shift+M)
 - Overview / Database / Bake / Tags / Director / Debug / Analysis / Settings.
+- Debug tab: scrub recorded matching decisions, visually rewind any of them onto the live
+  character, and pin one to diff against another (per-group cost deltas, what moved most, intent
+  shift).
 - Director tab: play any baked clip on the live character like a custom Animator (scrubbable
 timeline with per-foot contact lanes), record intent + pose, spawn ghost NPCs that replay a
 recording through their own matching, bake a performance to a real `AnimationClip`, swap the
@@ -111,6 +126,7 @@ Assets/ Unity project shell and the imported demo
 ## Testing
 
 `Packages/com.nekuzaky.kinema/Tests/Editor` holds EditMode tests covering the feature schema layout,
+the Timeline mixer, blend-space math, snapshot diffing, gait classification, the batched search path,
 `CharacterSpace` round-trips, the trajectory history ring buffer, the database's
 normalization/accessors, idle-duplicate pruning, and end-to-end matcher correctness (nearest-
 neighbour, tag filtering, ignore ranges, phase cost) against synthetic databases built directly
@@ -121,8 +137,14 @@ through `SetBakedData` - no rig or bake pipeline required. Run them from Unity's
 Unity -batchmode -projectPath . -runTests -testPlatform EditMode -testResults results.xml
 ```
 
-`Tools > Kinema > Benchmark Search` measures search performance directly (headless-runnable); see
-[TODO.md](TODO.md) for the gaps that remain (PlayMode/runtime feel automation, standalone builds).
+`Tests/Runtime` holds PlayMode tests that drive a real controller (live PlayableGraph, real
+searches) on a synthetic database - run with `-testPlatform PlayMode` (drop `-nographics`).
+`Assets/StandaloneSmokeTest/` builds a headless Win64 player that ticks a controller for 60 real
+frames and prints a `[KinemaSmoke]` verdict.
+
+`Tools > Kinema > Benchmark Search` measures search performance directly (headless-runnable),
+including N characters searching concurrently; see [TODO.md](TODO.md) for the gaps that remain
+(runtime *feel* is still judged by eye, not automation).
 
 ## Demo assets
 
