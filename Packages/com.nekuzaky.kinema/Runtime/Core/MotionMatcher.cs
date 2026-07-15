@@ -202,8 +202,14 @@ namespace Kinema.MotionMatching
                 BestFrame = _chunkBestFrame
             };
 
-            return job.Schedule(_chunkCount, 1);
+            _lastScheduled = job.Schedule(_chunkCount, 1);
+            return _lastScheduled;
         }
+
+        // Last handle ScheduleSearch produced, completed defensively by Dispose: disposing the
+        // NativeArrays under a still-running job is a safety-system error. Complete on an already-
+        // finished (or default) handle is a free no-op, so no bookkeeping flag is needed.
+        private JobHandle _lastScheduled;
 
         /// <summary>Completes a <see cref="ScheduleSearch"/> handle and reduces its chunk results,
         /// exactly like the tail of <see cref="Search"/>. <paramref name="query"/> must be the same
@@ -253,6 +259,7 @@ namespace Kinema.MotionMatching
         {
             if (_disposed) return;
             _disposed = true;
+            _lastScheduled.Complete();
             _nativeFeatures.Dispose();
             _nativeWeights.Dispose();
             _nativeQuery.Dispose();

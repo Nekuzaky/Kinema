@@ -15,7 +15,6 @@ namespace Kinema.MotionMatching.Timeline
     /// </summary>
     public sealed class MotionMatchingMixerBehaviour : PlayableBehaviour
     {
-        private bool _stateCaptured;
         private bool _stateBeforeControl;
         private bool _controllingLastFrame;
 
@@ -39,15 +38,15 @@ namespace Kinema.MotionMatching.Timeline
 
             if (controlling && !_controllingLastFrame)
             {
-                if (!_stateCaptured)
-                {
-                    _stateBeforeControl = controller.IsMatchingActive;
-                    _stateCaptured = true;
-                }
+                _stateBeforeControl = controller.IsMatchingActive;
                 controller.SetMatchingActive(true, fadeTime);
             }
             else if (!controlling && _controllingLastFrame)
             {
+                // Restore what was active just before THIS control span - captured fresh at each
+                // span's start, so a script toggling matching in a gap between two clips is
+                // respected by the second clip's restore (a capture-once flag restored the state
+                // from before the first clip forever).
                 controller.SetMatchingActive(_stateBeforeControl, fadeTime);
             }
 
@@ -56,7 +55,6 @@ namespace Kinema.MotionMatching.Timeline
 
         public override void OnPlayableDestroy(Playable playable)
         {
-            _stateCaptured = false;
             _controllingLastFrame = false;
         }
     }

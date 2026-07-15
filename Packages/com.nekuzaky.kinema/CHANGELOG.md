@@ -4,6 +4,32 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.19.1] - 2026-07-16
+
+### Fixed
+- Batched search + teardown race: a controller disabled (or database-switched) between scheduling
+  its batched search in Update and the batch's LateUpdate disposed the matcher's NativeArrays while
+  the Burst job still read them - a safety-system error in the editor, a race in a build. Teardown
+  now completes the pending handle first, and a stale handle arriving after re-initialization is
+  completed but its outcome discarded (it says nothing about the new matcher's buffers). PlayMode
+  regression test covers the exact window (coroutine resumes between Update and LateUpdate).
+- `MotionMatcher.Dispose` now defensively completes the last `ScheduleSearch` handle, so direct API
+  users can't dispose under a running job either.
+- Timeline mixer restored the state captured before the FIRST control span forever: a script
+  toggling matching between two clips was overwritten by the second clip's restore. State is now
+  captured fresh at each span's start (EditMode regression test).
+
+### Changed
+- `MotionMatchingLOD.BaseInterval` is now public: runtime code changing a LOD-managed character's
+  cadence must write it here - writing `SearchInterval` directly was silently stomped on the next
+  recompute.
+- `MotionMatchingSearchBatch.Register`/`Unregister`: route controllers spawned after the batch
+  enabled (the OnEnable auto-collect only sees what already exists).
+- Removed a duplicate undo step in the Tags tab's auto-tag button (`ApplyModifiedProperties`
+  already registers one).
+
+101/101 EditMode tests, 10/10 PlayMode tests.
+
 ## [1.19.0] - 2026-07-16
 
 ### Added

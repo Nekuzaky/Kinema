@@ -437,7 +437,9 @@ namespace Kinema.MotionMatching.Editor
                     "Replaces existing ranges on the clips it touches.", MessageType.None);
                 if (GUILayout.Button("Detect and apply gait tags", GUILayout.Height(24)))
                 {
-                    Undo.RecordObject(_config, "Auto-tag from motion");
+                    // No Undo.RecordObject here: AutoTagApplier goes through SerializedObject.
+                    // ApplyModifiedProperties, which registers the undo itself - recording on top
+                    // of it created a duplicate undo step.
                     var ranges = GaitClassifier.Classify(_database, GaitClassifier.Settings.Default);
                     int written = AutoTagApplier.Apply(_config, _database, ranges);
                     Debug.Log($"[Kinema] Auto-tag: wrote {written} tag ranges into '{_config.name}'. Rebake to bake them into the database.");

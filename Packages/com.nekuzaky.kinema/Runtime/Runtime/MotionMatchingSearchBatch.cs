@@ -57,6 +57,27 @@ namespace Kinema.MotionMatching
             _pending.Add((controller, handle));
         }
 
+        /// <summary>Routes a controller spawned after this batch enabled (the OnEnable auto-collect
+        /// only sees what already exists) through this batch.</summary>
+        public void Register(MotionMatchingController controller)
+        {
+            if (controller == null) return;
+            controller.SearchScheduler = this;
+            for (int i = 0; i < _controllers.Length; i++)
+                if (_controllers[i] == controller) return;
+            var grown = new MotionMatchingController[_controllers.Length + 1];
+            _controllers.CopyTo(grown, 0);
+            grown[_controllers.Length] = controller;
+            _controllers = grown;
+        }
+
+        /// <summary>Hands a controller its synchronous search path back.</summary>
+        public void Unregister(MotionMatchingController controller)
+        {
+            if (controller != null && ReferenceEquals(controller.SearchScheduler, this))
+                controller.SearchScheduler = null;
+        }
+
         private void LateUpdate()
         {
             CompletePending();

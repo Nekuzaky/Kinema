@@ -724,6 +724,12 @@ namespace Kinema.MotionMatching
                 // exchange for the searches running concurrently instead of serially.
                 Unity.Jobs.JobHandle handle = _matcher.ScheduleSearch(
                     _query, requiredTags: RequiredTags, excludedTags: ExcludedTags);
+                // Keep our own copy of the handle: if this controller tears down (disable, rebake,
+                // SwitchDatabase) before the scheduler's LateUpdate, Teardown must complete the job
+                // before disposing the matcher's NativeArrays - disposing under a running job is a
+                // safety-system error in the editor and a race in a build.
+                _pendingBatchedSearch = handle;
+                _hasPendingBatchedSearch = true;
                 SearchScheduler.EnqueueScheduledSearch(this, handle);
                 return;
             }
@@ -746,10 +752,18 @@ namespace Kinema.MotionMatching
         /// frame, after all registered controllers have scheduled.</summary>
         public void CompleteScheduledSearch(Unity.Jobs.JobHandle handle)
         {
-            if (!_initialized) { handle.Complete(); return; }
+            // No pending flag: this controller tore down (and completed the job itself) between
+            // scheduling and now - possibly re-initializing with a NEW matcher whose chunk buffers
+            // this stale handle says nothing about. Completing the handle again is a harmless no-op;
+            // applying an outcome from it would not be.
+            if (!_hasPendingBatchedSearch || !_initialized) { handle.Complete(); _hasPendingBatchedSearch = false; return; }
+            _hasPendingBatchedSearch = false;
             MotionMatchResult result = _matcher.CompleteSearch(handle, _query);
             ApplySearchOutcome(result);
         }
+
+        private Unity.Jobs.JobHandle _pendingBatchedSearch;
+        private bool _hasPendingBatchedSearch;
 
         /// <summary>Builds the query for the current tick: trajectory intent, gait phase, and the
         /// live (or frame-copied) pose. Shared by the synchronous and batched search paths.</summary>
@@ -1115,6 +1129,17 @@ namespace Kinema.MotionMatching
 
         private void Teardown()
         {
+            // A batched search may still be in flight (scheduled in Update, scheduler completes in
+            // LateUpdate); its job reads the matcher's NativeArrays, so it must finish before they
+            // are disposed below. JobHandle.Complete is idempotent - the scheduler completing the
+            // same handle later is a no-op, and CompleteScheduledSearch sees the cleared flag and
+            // skips applying the stale outcome.
+            if (_hasPendingBatchedSearch)
+            {
+                _pendingBatchedSearch.Complete();
+                _hasPendingBatchedSearch = false;
+            }
+
             if (_graph.IsValid()) _graph.Destroy();
             _inertializer?.Dispose();
             _inertializer = null;

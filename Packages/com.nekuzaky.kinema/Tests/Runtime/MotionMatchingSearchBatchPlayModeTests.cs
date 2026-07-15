@@ -129,6 +129,31 @@ namespace Kinema.MotionMatching.Tests
         }
 
         [UnityTest]
+        public IEnumerator DisablingControllerWithSearchInFlight_DoesNotDisposeUnderTheJob()
+        {
+            // Regression: a controller torn down between scheduling (its Update) and the batch's
+            // LateUpdate used to dispose the matcher's NativeArrays while the Burst job still read
+            // them - a safety-system error in the editor. Teardown now completes the pending handle
+            // first. This coroutine resumes after Update and before LateUpdate, which is exactly the
+            // dangerous window; the controller searches on its very first tick after SwitchDatabase
+            // (timer starts at 0), so disabling here catches a scheduled-but-not-completed job.
+            _controllers[0].DesiredVelocity = Vector3.forward;
+            yield return null; // resumed post-Update: a search was scheduled this frame, batch not yet run.
+
+            _controllers[0].enabled = false; // Teardown with the job (potentially) in flight.
+            yield return null;               // batch LateUpdate ran; must not throw or corrupt.
+
+            _controllers[0].enabled = true;
+            yield return null;
+            Assert.IsTrue(_controllers[0].IsInitialized, "controller must re-initialize cleanly after the mid-flight teardown");
+
+            for (int i = 0; i < 10; i++) yield return null;
+            int frame = _controllers[0].CurrentFrame;
+            Assert.GreaterOrEqual(frame, 0);
+            Assert.Less(frame, FrameCount);
+        }
+
+        [UnityTest]
         public IEnumerator DisablingBatch_RestoresSynchronousSearching()
         {
             foreach (MotionMatchingController controller in _controllers)

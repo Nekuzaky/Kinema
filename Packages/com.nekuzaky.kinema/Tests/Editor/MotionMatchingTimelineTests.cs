@@ -92,6 +92,33 @@ namespace Kinema.MotionMatching.Tests
         }
 
         [Test]
+        public void SecondControlSpan_RestoresStateFromJustBeforeIt_NotFromBeforeTheFirst()
+        {
+            _controller.SetMatchingActive(false, 0.01f);
+            var (mixer, _) = BuildOneClipMixer(0.2f);
+
+            // Span 1: control on, then off - restores the pre-span-1 state (inactive).
+            mixer.SetInputWeight(0, 1f);
+            _graph.Evaluate();
+            mixer.SetInputWeight(0, 0f);
+            _graph.Evaluate();
+            Assert.IsFalse(_controller.IsMatchingActive);
+
+            // Between spans, a script activates matching on its own.
+            _controller.SetMatchingActive(true, 0.01f);
+
+            // Span 2: control on, then off - must restore the state from just before span 2 (active),
+            // not the stale pre-span-1 capture (inactive).
+            mixer.SetInputWeight(0, 1f);
+            _graph.Evaluate();
+            mixer.SetInputWeight(0, 0f);
+            _graph.Evaluate();
+
+            Assert.IsTrue(_controller.IsMatchingActive,
+                "the second span's restore must honour the script's toggle made between the spans");
+        }
+
+        [Test]
         public void TwoOverlappingClips_StayActiveAcrossTheHandoff()
         {
             var mixer = ScriptPlayable<MotionMatchingMixerBehaviour>.Create(_graph, 2);

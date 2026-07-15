@@ -31,6 +31,18 @@ namespace Kinema.MotionMatching
         private float _baseInterval;
         private float _recomputeTimer;
 
+        /// <summary>
+        /// The undegraded interval the multiplier scales - captured from the controller once in
+        /// Awake. Anything changing the controller's cadence at runtime must write it HERE, not to
+        /// <see cref="MotionMatchingController.SearchInterval"/> (this component overwrites that
+        /// every recompute with base x multiplier, so a direct write would be silently stomped).
+        /// </summary>
+        public float BaseInterval
+        {
+            get => _baseInterval;
+            set => _baseInterval = Mathf.Max(0.02f, value);
+        }
+
         private void Awake()
         {
             if (_controller == null) _controller = GetComponent<MotionMatchingController>();
