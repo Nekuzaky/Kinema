@@ -15,7 +15,13 @@ namespace Kinema.MotionMatching.Samples
     {
         #region Public
 
-        [SerializeField, Min(0f)] private float _maxSpeed = 4f;
+        // 3 m/s, not 4: measured against the Opsive set, ~6.5% of frames sit within stride-warp range
+        // of a 3 m/s request versus ~2.8% at 4 m/s. Asking for a speed the data barely holds starves
+        // the search, so it flickers between clips and the stride warp pins at its 1.3x ceiling -
+        // both of which slide the planted foot. This keeps the demand inside the data.
+        [Tooltip("Top locomotion speed. Keep it inside the range the database actually covers; asking " +
+                 "for more starves the search and slides the feet.")]
+        [SerializeField, Min(0f)] private float _maxSpeed = 3f;
         [Tooltip("Movement is relative to this transform's yaw. Defaults to the main camera.")]
         [SerializeField] private Transform _cameraTransform;
         [Tooltip("How quickly the desired velocity chases the input. Higher = snappier.")]

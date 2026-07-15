@@ -201,6 +201,11 @@ namespace Kinema.MotionMatching.Samples.Editor
 
             DemoSceneBuilder.SetObjectReference(controller, "_database", dbRef);
             DemoSceneBuilder.SetObjectReference(controller, "_animator", animator);
+            // The mocap set is thin at higher speeds, so an unpenalised search hops between clips
+            // several times a second. Each hop blends, and a blend drags the planted foot far enough
+            // to break the foot lock. A firmer clip-change cost trades a little responsiveness for
+            // feet that stay put - which is what reads as real.
+            DemoSceneBuilder.SetFloat(controller, "_clipChangeCost", 0.25f);
             PrefabUtility.RecordPrefabInstancePropertyModifications(controller);
 
             return character;

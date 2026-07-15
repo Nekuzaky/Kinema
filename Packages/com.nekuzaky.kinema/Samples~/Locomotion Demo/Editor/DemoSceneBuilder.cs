@@ -114,6 +114,17 @@ namespace Kinema.MotionMatching.Samples.Editor
             }
         }
 
+        internal static void SetFloat(Object component, string property, float value)
+        {
+            var so = new SerializedObject(component);
+            SerializedProperty prop = so.FindProperty(property);
+            if (prop != null)
+            {
+                prop.floatValue = value;
+                so.ApplyModifiedPropertiesWithoutUndo();
+            }
+        }
+
         internal static void EnsureFolders()
         {
             CreateFolderIfMissing(DemoFolder, "Materials");

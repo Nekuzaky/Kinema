@@ -4,6 +4,27 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.1] - 2026-07-15
+
+### Changed
+- Demo locomotion tuned to reduce foot sliding, which the recording surfaced (foot slide 0.17-0.27
+  m/s, 3 clip changes per second). Two evidence-based causes:
+  - `LocomotionInputProvider` top speed 4 -> 3 m/s. Measured against the Opsive set, ~6.5% of frames
+    sit within stride-warp range of a 3 m/s request versus ~2.8% at 4 m/s; 66% of the set is below
+    0.5 m/s, so run data is thin and asking for 4 m/s lands in its sparsest region. A starved search
+    flickers between clips and pins the stride warp at its 1.3x ceiling, both of which slide the
+    planted foot.
+  - The demo character's clip-change cost is set to 0.25 (from the 0.1 default) so the search stops
+    hopping between clips several times a second; each hop blends, and a blend drags the planted foot
+    far enough to break the foot lock.
+- Both are demo-scene values, not package defaults - the runtime defaults are unchanged.
+
+### Notes
+- Measured headlessly: the database speed histogram and per-speed stride-warp reachability. The foot
+  slide itself could not be measured headless - it needs the PlayableGraph's animation jobs, which do
+  not initialise under -batchmode -nographics - so the on-screen improvement is reasoned from those
+  numbers, not yet confirmed on a running character.
+
 ## [1.8.0] - 2026-07-15
 
 ### Changed
