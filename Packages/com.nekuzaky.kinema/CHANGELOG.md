@@ -4,6 +4,15 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.0] - 2026-07-15
+
+### Added
+- GitHub Sponsors button on the repo (`.github/FUNDING.yml` -> github.com/sponsors/Nekuzaky).
+- Welcome popup: opens once per installed/upgraded version (tracked in `EditorPrefs` by version, so
+  it reappears on upgrade but stays quiet otherwise), brief quick-start, and three buttons -
+  Documentation, Sponsor, Website (nekuzaky.com) - plus Close. Reopen anytime via
+  `Tools > Kinema > Welcome`.
+
 ## [1.15.1] - 2026-07-15
 
 ### Fixed
