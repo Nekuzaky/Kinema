@@ -8,9 +8,26 @@ namespace Kinema.MotionMatching
     /// response = the prediction snaps to the desired velocity/facing sooner (more responsive,
     /// less smooth); lower = longer, smoother anticipation curves.
     /// </summary>
+    /// <summary>How the future trajectory approaches the desired velocity.</summary>
+    public enum PredictionModel
+    {
+        /// <summary>
+        /// Critically damped spring: velocity starts changing with zero acceleration and ramps in,
+        /// the way a body with mass actually commits to a turn. Smoother queries into and out of
+        /// direction changes.
+        /// </summary>
+        CriticalSpring = 0,
+
+        /// <summary>First-order lag: velocity snaps toward the target immediately. The v1.0 behaviour.</summary>
+        ExponentialLag = 1
+    }
+
     [Serializable]
     public struct TrajectoryPredictionSettings
     {
+        [Tooltip("How the prediction approaches the desired velocity. Critical spring reads as a body with mass; exponential lag reacts instantly.")]
+        public PredictionModel Model;
+
         [Tooltip("Seconds for the predicted position to catch up to the desired velocity. Lower = snappier.")]
         [Range(0.05f, 1.0f)] public float PositionResponse;
 
@@ -19,6 +36,7 @@ namespace Kinema.MotionMatching
 
         public static TrajectoryPredictionSettings Default => new TrajectoryPredictionSettings
         {
+            Model = PredictionModel.CriticalSpring,
             PositionResponse = 0.35f,
             DirectionResponse = 0.25f
         };
@@ -86,13 +104,28 @@ namespace Kinema.MotionMatching
                     continue;
                 }
 
-                // Future: integral of a velocity that approaches desiredVel with time constant tauPos.
-                float posBlend = tauPos * (1f - Mathf.Exp(-t / tauPos));
+                // Future: integral of a velocity approaching desiredVel, either as a first-order lag
+                // or as a critically damped spring (zero initial acceleration - the C1 start a real
+                // body has). Both are closed-form, so prediction stays allocation- and iteration-free.
+                float posBlend, dirBlend;
+                if (settings.Model == PredictionModel.CriticalSpring)
+                {
+                    // Velocity transient (1 + wt)e^{-wt}; its integral is (2 - e^{-wt}(2 + wt)) / w.
+                    float wp = 2f / tauPos;
+                    posBlend = (2f - Mathf.Exp(-wp * t) * (2f + wp * t)) / wp;
+
+                    // Spring step response for the facing blend, C1 at t = 0.
+                    float wd = 2f / tauDir;
+                    dirBlend = 1f - Mathf.Exp(-wd * t) * (1f + wd * t);
+                }
+                else
+                {
+                    posBlend = tauPos * (1f - Mathf.Exp(-t / tauPos));
+                    dirBlend = 1f - Mathf.Exp(-t / tauDir);
+                }
+
                 Vector3 worldOffset = desiredVel * t + (currentVel - desiredVel) * posBlend;
                 Vector3 worldPoint = space.Origin + worldOffset;
-
-                // Facing: exponential approach from current to desired facing.
-                float dirBlend = 1f - Mathf.Exp(-t / tauDir);
                 Vector3 worldDir = Vector3.Slerp(currentFacing, desiredFacing, dirBlend);
 
                 buffer[i] = new TrajectorySample(

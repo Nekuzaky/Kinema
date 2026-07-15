@@ -84,6 +84,13 @@ namespace Kinema.MotionMatching
         [Tooltip("Build the query's pose half from the skeleton actually rendered (after inertialization, stride warp and IK) instead of copying the current database frame. Honest pose costs; falls back to the frame copy when the schema's bones are missing on the rig.")]
         [SerializeField] private bool _livePoseQuery = true;
 
+        [Header("Search Triggering")]
+        [Tooltip("Search immediately when the predicted trajectory deviates from the last searched one, instead of waiting out the timer. Turns get answered the frame they happen; straight lines still search at the regular interval.")]
+        [SerializeField] private bool _searchOnDeviation = true;
+
+        [Tooltip("Average future-point deviation (meters) that triggers an immediate search.")]
+        [SerializeField, Range(0.05f, 1f)] private float _deviationThreshold = 0.2f;
+
         [Header("Events")]
         [Tooltip("Relay AnimationEvents of the active clip via SendMessage, matching Mecanim semantics.")]
         [SerializeField] private bool _relayAnimationEvents = true;
@@ -290,6 +297,9 @@ namespace Kinema.MotionMatching
         private Vector3[] _queryBoneVelocities;
         private bool _queryBonesValid;
         private bool _queryBonesPrimed;
+
+        // Future points the last search answered, for deviation-triggered searching.
+        private Vector2[] _lastSearchedTrajectory;
         private Vector3[] _candidateBones;
 
         #endregion
@@ -488,6 +498,14 @@ namespace Kinema.MotionMatching
             }
             else
             {
+                // Prediction runs every frame (it is a handful of exponentials); the search itself
+                // is the expensive part and stays gated.
+                PredictDesiredTrajectory();
+
+                // A turn should be answered the frame it happens, not up to a full interval later.
+                if (_searchOnDeviation && TrajectoryDeviation() > _deviationThreshold)
+                    _searchTimer = 0f;
+
                 _searchTimer -= dt;
                 if (_searchTimer <= 0f)
                 {
@@ -632,16 +650,47 @@ namespace Kinema.MotionMatching
             }
         }
 
-        private void RunSearch()
+        private void PredictDesiredTrajectory()
         {
             CharacterSpace space = CharacterSpace.FromTransform(transform);
-
             Vector3 desiredVelocity = _locomotion != null ? _locomotion.DesiredVelocity : _desiredVelocity;
             Vector3 desiredFacing = _locomotion != null ? _locomotion.DesiredFacing : Vector3.zero;
 
             TrajectoryPredictor.Predict(
                 space, _measuredVelocity, desiredVelocity, desiredFacing,
                 _database.Schema.TrajectoryTimes, _prediction, _history, Time.time, _desiredTrajectory);
+        }
+
+        /// <summary>
+        /// Average distance (meters) between the future points predicted now and those the last
+        /// search answered. Character space makes this stable: cruising in any straight line keeps
+        /// local future points constant, so only genuine intent changes register.
+        /// </summary>
+        private float TrajectoryDeviation()
+        {
+            if (_lastSearchedTrajectory == null) return float.MaxValue;
+
+            float[] times = _database.Schema.TrajectoryTimes;
+            float sum = 0f;
+            int futureCount = 0;
+            for (int i = 0; i < times.Length; i++)
+            {
+                if (times[i] <= 0f) continue;
+                sum += (_desiredTrajectory[i].Position - _lastSearchedTrajectory[i]).magnitude;
+                futureCount++;
+            }
+            return futureCount > 0 ? sum / futureCount : 0f;
+        }
+
+        private void RunSearch()
+        {
+            CharacterSpace space = CharacterSpace.FromTransform(transform);
+
+            // Remember what this search answered, so deviation from it can trigger the next one.
+            if (_lastSearchedTrajectory == null || _lastSearchedTrajectory.Length != _desiredTrajectory.Length)
+                _lastSearchedTrajectory = new Vector2[_desiredTrajectory.Length];
+            for (int i = 0; i < _desiredTrajectory.Length; i++)
+                _lastSearchedTrajectory[i] = _desiredTrajectory[i].Position;
 
             int currentFrame = MapCurrentFrame();
             _lastCurrentFrame = currentFrame;
@@ -994,6 +1043,7 @@ namespace Kinema.MotionMatching
             _mirror = null;
             _matcher?.Dispose();
             _matcher = null;
+            _lastSearchedTrajectory = null;
             _activeEvent = null;
             _playingMirrored = false;
             _initialized = false;
