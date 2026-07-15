@@ -4,6 +4,41 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-07-15
+
+Recording release, plus one tool instead of three.
+
+### Added
+- `PoseRecorder` + `PoseClipBaker`: record the skeleton as actually posed on screen - after matching,
+  blending, stride warping and IK - and bake it into a real AnimationClip asset via
+  `Tools > Kinema > Save Last Take As Animation Clip`. This is a different capture from
+  `SessionRecorder`, which stores intent: replaying intent re-runs the matcher and can produce a
+  different (equally valid) performance, while a pose take is the performance itself.
+- `GhostReplayDirector`: record with R, and an NPC clone is sent out to redo your trajectory. The
+  ghost is driven by your recorded *intent* and runs its own matching against it, so it reproduces
+  where you went rather than replaying a video of you. G spawns another, K clears them.
+- Vault event is now authored from the mocap pack's running jump, so Space works in the pack scene.
+- Browser overlay gained a recording section (take length, ghost count, record/ghost/clear).
+
+### Changed
+- `Tools > Kinema > Demo Scene` now runs the entire setup itself: it bakes every clip in the
+  installed mocap pack and then builds the scene. No separate setup trip first.
+- One scene builder for every entry point, instead of each setup defining its own demo scene.
+
+### Fixed
+- Space did nothing in the pack scene: `VaultTrigger` was only ever added by the procedural FBX
+  setup, so the pack scene never carried it and no vault event existed to trigger. Not an Input
+  System problem, which is where it looked like it pointed.
+- Scene building lost every asset reference wired before the scene was created. `NewScene` unloads
+  unreferenced assets and destroys their instances, leaving Unity fake-nulls: the C# reference is
+  alive, `== null` is true, and the wiring silently drops. The builder now takes paths and loads from
+  disk after the scene exists.
+- Ghost clones kept the controller's cached input provider after it was stripped, so they would have
+  stood still; `SetLocomotionProvider` rebinds them to the replay.
+- `ReplayLocomotionProvider.ForceRecordedTimestep` is now settable. It drives the engine clock, which
+  is right for deterministic analysis and wrong for a ghost running next to a live player - it would
+  dictate the player's frame rate too.
+
 ## [1.6.1] - 2026-07-15
 
 ### Fixed

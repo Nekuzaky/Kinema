@@ -34,6 +34,7 @@ namespace Kinema.MotionMatching.Samples
 
         private MotionMatchingController _controller;
         private MotionQualityProbe _probe;
+        private GhostReplayDirector _director;
         private MotionMatchingDatabase _database;
 
         private readonly List<int> _filtered = new();
@@ -54,6 +55,7 @@ namespace Kinema.MotionMatching.Samples
         {
             _controller = GetComponent<MotionMatchingController>();
             _probe = GetComponent<MotionQualityProbe>();
+            _director = GetComponent<GhostReplayDirector>();
             _visible = _visibleOnStart;
         }
 
@@ -71,6 +73,7 @@ namespace Kinema.MotionMatching.Samples
 
             GUILayout.BeginArea(new Rect(10f, 10f, _panelWidth, Screen.height - 20f), GUI.skin.box);
             DrawStatus();
+            DrawGhosts();
             DrawTags();
             DrawClipList();
             GUILayout.EndArea();
@@ -106,6 +109,33 @@ namespace Kinema.MotionMatching.Samples
                     _controller.StopClipOverride();
                     _playing = -1;
                 }
+            }
+
+            GUILayout.Space(4f);
+        }
+
+        private void DrawGhosts()
+        {
+            if (_director == null) return;
+
+            GUILayout.Label("Record — ghosts redo your trajectory", _headerStyle);
+
+            if (_director.IsRecording)
+                GUILayout.Label("REC — move around, then stop.", _statStyle);
+            else if (_director.LastTakeDuration > 0f)
+                GUILayout.Label($"Take: {_director.LastTakeDuration:F1}s   ghosts: {_director.GhostCount}", _statStyle);
+            else
+                GUILayout.Label("Nothing recorded yet.", _statStyle);
+
+            using (new GUILayout.HorizontalScope())
+            {
+                if (GUILayout.Button(_director.IsRecording ? "Stop (R)" : "Record (R)")) _director.ToggleRecording();
+
+                GUI.enabled = !_director.IsRecording && _director.LastTakeDuration > 0f;
+                if (GUILayout.Button("Ghost (G)")) _director.SpawnGhost();
+                GUI.enabled = _director.GhostCount > 0;
+                if (GUILayout.Button("Clear (K)")) _director.ClearGhosts();
+                GUI.enabled = true;
             }
 
             GUILayout.Space(4f);

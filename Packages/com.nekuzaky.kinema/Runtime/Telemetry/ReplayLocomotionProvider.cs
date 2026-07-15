@@ -33,6 +33,20 @@ namespace Kinema.MotionMatching
         public Vector3 DesiredFacing => _playing ? Current.DesiredFacing : Vector3.zero;
 
         public bool IsReplaying => _playing;
+
+        public bool Loop { get => _loop; set => _loop = value; }
+
+        /// <summary>
+        /// Drives the engine clock from the recording. Exact reproduction, but it is a global effect:
+        /// leave it off for a ghost running alongside a live player, or the player's own frame rate
+        /// gets dictated by the tape. Set before <see cref="Play"/>.
+        /// </summary>
+        public bool ForceRecordedTimestep { get => _forceRecordedTimestep; set => _forceRecordedTimestep = value; }
+
+        /// <summary>Snap to the recorded start pose when the replay begins. Set before <see cref="Play"/>.</summary>
+        public bool RestoreStartPose { get => _restoreStartPose; set => _restoreStartPose = value; }
+
+        public bool PlayOnStart { get => _playOnStart; set => _playOnStart = value; }
         public int FrameIndex => _index;
         public float Progress01 => _recording != null && _recording.FrameCount > 0
             ? Mathf.Clamp01((float)_index / _recording.FrameCount)

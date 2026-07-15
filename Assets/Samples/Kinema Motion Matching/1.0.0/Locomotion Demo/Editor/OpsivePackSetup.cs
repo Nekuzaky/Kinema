@@ -31,7 +31,6 @@ namespace Kinema.MotionMatching.Samples.Editor
         private static string OutputFolder => DemoPaths.SampleRoot + "/Opsive";
         private static string ConfigPath => OutputFolder + "/KinemaOpsiveConfig.asset";
         private static string DatabasePath => OutputFolder + "/KinemaOpsiveConfigDatabase.asset";
-        private static string ScenePath => OutputFolder + "/KinemaOpsiveDemo.unity";
 
         /// <summary>Tag vocabulary derived from the pack's naming convention.</summary>
         private static readonly (string Tag, string Keyword)[] TagRules =
@@ -67,14 +66,38 @@ namespace Kinema.MotionMatching.Samples.Editor
 
         private static void Build()
         {
+            if (!TryBake(out PackBake bake)) return;
+            DemoSceneTool.BuildSceneFrom(bake);
+        }
+
+        /// <summary>True when the pack is present in the project at the expected path.</summary>
+        internal static bool PackAvailable => AssetDatabase.IsValidFolder(ClipFolder);
+
+        /// <summary>Everything a scene builder needs from a completed bake.</summary>
+        internal struct PackBake
+        {
+            public string RigPath;
+            public string DatabasePath;
+            public string VaultEventPath;
+        }
+
+        /// <summary>
+        /// Resolves the rig, bakes every clip in the pack, and authors the vault event. Split out from
+        /// scene building so the Demo Scene tool can run the whole setup itself rather than requiring
+        /// a separate menu trip.
+        /// </summary>
+        internal static bool TryBake(out PackBake bake)
+        {
+            bake = default;
+
             GameObject rig = ResolveDisplayRig();
-            if (rig == null) return;
+            if (rig == null) return false;
 
             AnimationClip[] clips = LoadPackClips();
             if (clips.Length == 0)
             {
                 Debug.LogError($"[Kinema] No clips found under {ClipFolder}.");
-                return;
+                return false;
             }
             Debug.Log($"[Kinema] Opsive pack: {clips.Length} mocap clips found.");
 
@@ -82,7 +105,7 @@ namespace Kinema.MotionMatching.Samples.Editor
             if (boneNames.Length == 0)
             {
                 Debug.LogError($"[Kinema] Could not resolve Humanoid bones on '{rig.name}'.");
-                return;
+                return false;
             }
             Debug.Log($"[Kinema] Bones: [{string.Join(", ", boneNames)}]");
 
@@ -95,12 +118,64 @@ namespace Kinema.MotionMatching.Samples.Editor
             if (!report.Success)
             {
                 Debug.LogError("[Kinema] Bake failed: " + report.Error);
-                return;
+                return false;
             }
             Debug.Log($"[Kinema] Baked {report.FrameCount:N0} frames from {report.ClipCount} clip(s) → {report.DatabasePath}");
             foreach (string w in report.Warnings) Debug.LogWarning("[Kinema] " + w);
 
-            BuildScene(rig);
+            // Paths, not objects: creating the demo scene unloads unreferenced assets and destroys
+            // these instances, leaving Unity fake-nulls behind. The scene builder reloads from disk.
+            bake = new PackBake
+            {
+                RigPath = AssetDatabase.GetAssetPath(rig),
+                DatabasePath = DatabasePath,
+                VaultEventPath = CreateVaultEvent(clips)
+            };
+            return true;
+        }
+
+        /// <summary>
+        /// Authors the vault event from the pack's running jump. The pack has no vault capture, but a
+        /// run-jump is the closest thing in it: it leaves the ground travelling forward, which is what
+        /// root warping needs to land the character on the obstacle's far edge.
+        /// </summary>
+        private static string CreateVaultEvent(AnimationClip[] clips)
+        {
+            AnimationClip jump = FindClip(clips, "RunJumpLeft") ?? FindClip(clips, "RunJump") ?? FindClip(clips, "Jump");
+            if (jump == null)
+            {
+                Debug.LogWarning("[Kinema] No jump clip in the pack, so the vault event was skipped. Space will do nothing.");
+                return null;
+            }
+
+            string path = OutputFolder + "/OpsiveVaultEvent.asset";
+            var def = AssetDatabase.LoadAssetAtPath<MotionEventDefinition>(path);
+            if (def == null)
+            {
+                def = ScriptableObject.CreateInstance<MotionEventDefinition>();
+                AssetDatabase.CreateAsset(def, path);
+            }
+
+            var so = new SerializedObject(def);
+            so.FindProperty("_clip").objectReferenceValue = jump;
+            // Contact just past the take-off, where the body is over the obstacle.
+            so.FindProperty("_contactTime").floatValue = Mathf.Clamp(jump.length * 0.45f, 0.1f, jump.length - 0.05f);
+            so.FindProperty("_blendIn").floatValue = 0.12f;
+            so.FindProperty("_warpPosition").boolValue = true;
+            so.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(def);
+            AssetDatabase.SaveAssets();
+
+            Debug.Log($"[Kinema] Vault event built from '{jump.name}' ({jump.length:F2}s). Space near a low obstacle.");
+            return path;
+        }
+
+        private static AnimationClip FindClip(AnimationClip[] clips, string nameFragment)
+        {
+            foreach (AnimationClip clip in clips)
+                if (clip.name.IndexOf(nameFragment, System.StringComparison.OrdinalIgnoreCase) >= 0)
+                    return clip;
+            return null;
         }
 
         private static AnimationClip[] LoadPackClips()
@@ -302,56 +377,6 @@ namespace Kinema.MotionMatching.Samples.Editor
                 array.InsertArrayElementAtIndex(i);
                 assign(array.GetArrayElementAtIndex(i), i);
             }
-        }
-
-        private static void BuildScene(GameObject rig)
-        {
-            DemoSceneBuilder.EnsureFolders();
-            DemoSceneBuilder.NewDemoScene();
-
-            (Material ground, Material obstacle) = DemoSceneBuilder.CreateMaterials();
-            DemoSceneBuilder.BuildEnvironment(ground, obstacle);
-
-            var character = (GameObject)PrefabUtility.InstantiatePrefab(rig);
-            character.name = "Character";
-            character.transform.position = Vector3.zero;
-            character.transform.rotation = Quaternion.identity;
-
-            // Explicit null checks: GetComponent returns a fake-null Unity object, which ?? does not catch.
-            var cc = character.GetComponent<CharacterController>();
-            if (cc == null) cc = character.AddComponent<CharacterController>();
-            cc.center = new Vector3(0f, 0.9f, 0f);
-            cc.radius = 0.3f;
-            cc.height = 1.8f;
-
-            var animator = character.GetComponent<Animator>();
-            if (animator == null) animator = character.AddComponent<Animator>();
-            animator.applyRootMotion = true;
-
-            var controller = character.AddComponent<MotionMatchingController>();
-            character.AddComponent<FootLockIK>();
-            character.AddComponent<GroundAdaptationIK>();
-            character.AddComponent<MotionQualityProbe>();
-            character.AddComponent<SessionRecorder>();
-            character.AddComponent<CharacterMotor>();
-            character.AddComponent<LocomotionInputProvider>();
-            // Crouch is 44% of this pack. Without a stance filter the search answers a standing
-            // query with a crouched frame whose feet happen to line up.
-            character.AddComponent<StanceTagController>();
-
-            var dbRef = AssetDatabase.LoadAssetAtPath<MotionMatchingDatabase>(DatabasePath);
-            DemoSceneBuilder.SetObjectReference(controller, "_database", dbRef);
-            DemoSceneBuilder.SetObjectReference(controller, "_animator", animator);
-            PrefabUtility.RecordPrefabInstancePropertyModifications(controller);
-
-            DemoSceneBuilder.WireCamera(character.transform);
-            DemoSceneBuilder.ConfigureSun();
-            Selection.activeGameObject = character;
-
-            var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
-            EditorSceneManager.MarkSceneDirty(scene);
-            EditorSceneManager.SaveScene(scene, ScenePath);
-            Debug.Log($"[Kinema] Opsive demo scene saved → {ScenePath}");
         }
 
         #endregion

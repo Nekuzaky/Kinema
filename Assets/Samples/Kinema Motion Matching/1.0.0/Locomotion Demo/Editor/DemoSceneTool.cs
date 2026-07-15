@@ -5,17 +5,16 @@ using UnityEngine;
 namespace Kinema.MotionMatching.Samples.Editor
 {
     /// <summary>
-    /// Tools > Kinema > Demo Scene: builds a scene for exercising a whole database.
+    /// Tools > Kinema > Demo Scene: bakes everything available and builds the scene to exercise it.
     ///
-    /// The regular demo answers "does locomotion feel right". This one answers "is my data any good"
-    /// - a different question that the regular demo cannot address, because the matcher only ever
-    /// shows you frames that fit what you happened to be doing. Clips that are never selected are
-    /// never seen, so this scene ships an <see cref="AnimationBrowser"/> that can force any clip, and
-    /// terrain built to provoke every subsystem: slopes and steps for ground adaptation, a low ledge
-    /// for the vault event, open ground for stride warping across the speed range.
+    /// One trip. When a mocap pack is installed it is baked from scratch here - all of it, every
+    /// clip - rather than requiring a separate setup step first. Failing that, the richest database
+    /// already baked in the project is used.
     ///
-    /// The richest baked config in the project wins, so importing a bigger mocap pack and rerunning
-    /// this picks it up with no arguments.
+    /// The scene is built to provoke the subsystems flat ground never touches: slopes and steps for
+    /// ground adaptation, a low ledge for the vault event, a long lane for stride warping. It also
+    /// carries the tools for judging the data rather than just feeling it - an animation browser that
+    /// can force any clip, and recording that sends ghosts out to redo your trajectory.
     /// </summary>
     public static class DemoSceneTool
     {
@@ -42,8 +41,11 @@ namespace Kinema.MotionMatching.Samples.Editor
             AssetDatabase.Refresh();
         }
 
-        [MenuItem("Tools/Kinema/Demo Scene", validate = true)]
-        private static bool ValidateBuild() => FindRichestConfig(out _, out _) != null;
+        /// <summary>Builds the scene from an already-completed pack bake, so setup runs only once.</summary>
+        internal static void BuildSceneFrom(OpsivePackSetup.PackBake bake)
+        {
+            BuildScene(bake.RigPath, bake.DatabasePath, bake.VaultEventPath);
+        }
 
         #endregion
 
@@ -53,11 +55,24 @@ namespace Kinema.MotionMatching.Samples.Editor
         {
             error = null;
 
+            // A mocap pack is the best data available, so bake all of it here rather than leaving the
+            // user to discover a separate setup step.
+            if (OpsivePackSetup.PackAvailable)
+            {
+                if (!OpsivePackSetup.TryBake(out OpsivePackSetup.PackBake bake))
+                {
+                    error = "The mocap pack is installed but could not be baked. See the Console for the reason.";
+                    return false;
+                }
+                BuildSceneFrom(bake);
+                return true;
+            }
+
             MotionMatchingConfig config = FindRichestConfig(out MotionMatchingDatabase database, out string databasePath);
             if (config == null)
             {
-                error = "No baked database found. Run Kinema > Motion Matching > Setup Full Demo From FBX " +
-                        "(or Setup Demo From Opsive Pack) first, then build the test scene.";
+                error = "No mocap pack and no baked database found. Run Tools > Kinema > Setup > Demo From FBX first, " +
+                        "then build the demo scene.";
                 return false;
             }
             if (config.RigPrefab == null)
@@ -66,24 +81,39 @@ namespace Kinema.MotionMatching.Samples.Editor
                 return false;
             }
 
-            Debug.Log($"[Kinema] Test scene using '{config.name}': {database.ClipCount} clips, " +
-                      $"{database.FrameCount:N0} frames, {(database.HasTags ? database.TagNames.Length : 0)} tags.");
+            BuildScene(AssetDatabase.GetAssetPath(config.RigPrefab), databasePath, DemoPaths.SampleRoot + "/VaultEvent.asset");
+            return true;
+        }
+
+        /// <summary>
+        /// Takes paths rather than objects on purpose. Creating the scene unloads unreferenced assets
+        /// and destroys their instances, so anything loaded beforehand comes back as a Unity
+        /// fake-null: the C# reference is alive, `== null` is true, and the wiring silently drops.
+        /// Everything is therefore loaded from disk after the scene exists.
+        /// </summary>
+        private static void BuildScene(string rigPath, string databasePath, string vaultEventPath)
+        {
+            DemoSceneBuilder.EnsureFolders();
+            DemoSceneBuilder.NewDemoScene();
+
+            var rig = AssetDatabase.LoadAssetAtPath<GameObject>(rigPath);
+            var database = AssetDatabase.LoadAssetAtPath<MotionMatchingDatabase>(databasePath);
+            var vaultEvent = AssetDatabase.LoadAssetAtPath<MotionEventDefinition>(vaultEventPath);
+
+            Debug.Log($"[Kinema] Demo scene from '{rig.name}': {database.ClipCount} clips, {database.FrameCount:N0} frames, " +
+                      $"{(database.HasTags ? database.TagNames.Length : 0)} tags.");
 
             // A skinless rig animates correctly and renders nothing, which looks exactly like the
             // scene failing to build. Say so rather than handing over an empty-looking viewport.
-            if (config.RigPrefab.GetComponentsInChildren<SkinnedMeshRenderer>(true).Length == 0)
-                Debug.LogWarning($"[Kinema] '{config.RigPrefab.name}' has no skinned mesh, so the character will be " +
-                                 "invisible in the scene. It still animates - select it and watch the Transforms, or " +
-                                 "rebake against a rig that carries a skin.");
-
-            DemoSceneBuilder.EnsureFolders();
-            DemoSceneBuilder.NewDemoScene();
+            if (rig.GetComponentsInChildren<SkinnedMeshRenderer>(true).Length == 0)
+                Debug.LogWarning($"[Kinema] '{rig.name}' has no skinned mesh, so the character will be invisible. " +
+                                 "It still animates - rebake against a rig that carries a skin.");
 
             (Material ground, Material obstacle) = DemoSceneBuilder.CreateMaterials();
             DemoSceneBuilder.BuildEnvironment(ground, obstacle);
             BuildTestTerrain(obstacle);
 
-            GameObject character = BuildCharacter(config.RigPrefab, databasePath, database);
+            GameObject character = BuildCharacter(rig, dbRef: database, vaultEvent: vaultEvent);
             DemoSceneBuilder.WireCamera(character.transform);
             DemoSceneBuilder.ConfigureSun();
             Selection.activeGameObject = character;
@@ -91,8 +121,9 @@ namespace Kinema.MotionMatching.Samples.Editor
             UnityEngine.SceneManagement.Scene scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, ScenePath);
-            Debug.Log($"[Kinema] Test scene saved → {ScenePath}");
-            return true;
+
+            Debug.Log($"[Kinema] Demo scene saved → {ScenePath}. Play, then: Tab browser, WASD move, " +
+                      "Space vault at a low ledge, C crouch, R record, G ghost, K clear ghosts.");
         }
 
         /// <summary>
@@ -115,14 +146,14 @@ namespace Kinema.MotionMatching.Samples.Editor
                     new Vector3(4f, height, 0.45f), Quaternion.identity, material);
             }
 
-            // Low ledge for the vault event, at the height the demo trigger expects.
+            // Low ledge for the vault event, at the height the trigger expects.
             DemoSceneBuilder.CreateBox(root.transform, new Vector3(0f, 0.45f, -9f), new Vector3(6f, 0.9f, 0.5f), Quaternion.identity, material);
 
             // Long open lane: room to accelerate through the full speed range and watch stride warp.
             DemoSceneBuilder.CreateBox(root.transform, new Vector3(0f, 0.01f, 20f), new Vector3(3f, 0.02f, 26f), Quaternion.identity, material);
         }
 
-        private static GameObject BuildCharacter(GameObject rig, string databasePath, MotionMatchingDatabase database)
+        private static GameObject BuildCharacter(GameObject rig, MotionMatchingDatabase dbRef, MotionEventDefinition vaultEvent)
         {
             var character = (GameObject)PrefabUtility.InstantiatePrefab(rig);
             character.name = "Character";
@@ -144,15 +175,25 @@ namespace Kinema.MotionMatching.Samples.Editor
             character.AddComponent<GroundAdaptationIK>();
             character.AddComponent<MotionQualityProbe>();
             character.AddComponent<SessionRecorder>();
+            character.AddComponent<PoseRecorder>();
             character.AddComponent<CharacterMotor>();
             character.AddComponent<LocomotionInputProvider>();
             character.AddComponent<AnimationBrowser>();
+            character.AddComponent<GhostReplayDirector>();
 
             // Only meaningful on a tagged set; on an untagged one it would warn every run.
-            if (database.HasTags) character.AddComponent<StanceTagController>();
+            if (dbRef.HasTags) character.AddComponent<StanceTagController>();
 
-            // Asset references must point at the on-disk asset, not an in-memory instance.
-            var dbRef = AssetDatabase.LoadAssetAtPath<MotionMatchingDatabase>(databasePath);
+            if (vaultEvent != null)
+            {
+                var vault = character.AddComponent<VaultTrigger>();
+                DemoSceneBuilder.SetObjectReference(vault, "_vaultEvent", vaultEvent);
+            }
+            else
+            {
+                Debug.LogWarning("[Kinema] No vault event available, so Space will do nothing in this scene.");
+            }
+
             DemoSceneBuilder.SetObjectReference(controller, "_database", dbRef);
             DemoSceneBuilder.SetObjectReference(controller, "_animator", animator);
             PrefabUtility.RecordPrefabInstancePropertyModifications(controller);
@@ -165,8 +206,8 @@ namespace Kinema.MotionMatching.Samples.Editor
         #region Tools and Utilities — Discovery
 
         /// <summary>
-        /// Picks the baked config with the most frames: "test all the animations" means the richest
-        /// set available, and it keeps the tool argument-free as packs are added.
+        /// Picks the baked config with the most frames: "all the animations" means the richest set
+        /// available, and it keeps the tool argument-free as packs are added.
         /// </summary>
         private static MotionMatchingConfig FindRichestConfig(out MotionMatchingDatabase database, out string databasePath)
         {
