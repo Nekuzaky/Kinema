@@ -119,6 +119,9 @@ namespace Kinema.MotionMatching
         /// <summary>True while a triggered event clip is playing (matching suspended).</summary>
         public bool IsPlayingEvent => _activeEvent != null;
 
+        /// <summary>True while a clip is being force-played by <see cref="PlayClipOverride"/>.</summary>
+        public bool IsOverridingClip => _clipOverride;
+
         /// <summary>Ring buffer of the last matching decisions, for the snapshot debugger.</summary>
         public SearchSnapshotRecorder Snapshots => _snapshots;
 
@@ -241,6 +244,7 @@ namespace Kinema.MotionMatching
 
         // Live state saved while previewing a snapshot, restored by StopPreview.
         private bool _previewing;
+        private bool _clipOverride;
         private Vector3 _liveCharacterPosition;
         private Quaternion _liveCharacterRotation;
         private int _liveActiveSlot;
@@ -445,7 +449,11 @@ namespace Kinema.MotionMatching
             UpdateStrideWarp(dt);
             AdvanceClocks(dt);
 
-            if (_activeEvent != null)
+            if (_clipOverride)
+            {
+                // Inspection mode: the clip owns the pose, the matcher stays out of it.
+            }
+            else if (_activeEvent != null)
             {
                 TickEvent(dt);
             }
@@ -527,7 +535,7 @@ namespace Kinema.MotionMatching
         {
             float target = 1f;
 
-            if (_strideWarping && _activeEvent == null)
+            if (_strideWarping && _activeEvent == null && !_clipOverride)
             {
                 float clipSpeed = _database.GetRootVelocity(MapCurrentFrame()).magnitude;
                 Vector3 desired = _locomotion != null ? _locomotion.DesiredVelocity : _desiredVelocity;
@@ -696,6 +704,39 @@ namespace Kinema.MotionMatching
             _mixer.SetInputWeight(1 - _activeSlot, 1f - w);
 
             if (_blend01 >= 1f) _blending = false;
+        }
+
+        /// <summary>
+        /// Force-plays one database clip and suspends matching until <see cref="StopClipOverride"/>.
+        /// The clock keeps running, so the clip plays at its authored rate through the normal graph -
+        /// this is inspection of the data as baked, not a matching decision. Stride warping is held
+        /// at 1 for the duration so what is on screen is the clip, not a scaled version of it.
+        /// </summary>
+        public void PlayClipOverride(int clipIndex, float time = 0f)
+        {
+            if (!_initialized || _database == null) return;
+            if (clipIndex < 0 || clipIndex >= _database.ClipCount) return;
+
+            _clipOverride = true;
+            _activeEvent = null;
+            _blending = false;
+            _blend01 = 1f;
+
+            // Drive both slots from the same clip: no stale pose can bleed through the mixer.
+            ApplySlotState(_activeSlot, clipIndex, time);
+            ApplySlotState(1 - _activeSlot, clipIndex, time);
+            _mixer.SetInputWeight(_activeSlot, 1f);
+            _mixer.SetInputWeight(1 - _activeSlot, 0f);
+
+            ApplySlotTimes();
+        }
+
+        /// <summary>Hands control back to the matcher; the next search runs immediately.</summary>
+        public void StopClipOverride()
+        {
+            if (!_clipOverride) return;
+            _clipOverride = false;
+            _searchTimer = 0f;
         }
 
         /// <summary>

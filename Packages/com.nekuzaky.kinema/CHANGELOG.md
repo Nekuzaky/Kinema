@@ -4,6 +4,24 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-07-15
+
+Data inspection release. The demo answers "does locomotion feel right"; nothing answered "is my
+data any good". The matcher only ever shows frames that fit what you happened to be doing, so a
+broken, mis-tagged or badly baked clip can sit in a database indefinitely without ever appearing.
+
+### Added
+- `Tools > Kinema > Demo Scene`: builds a scene for exercising a whole database. Picks the richest
+  baked config in the project automatically, so importing a bigger pack and rerunning picks it up
+  with no arguments. Terrain is built to provoke the subsystems flat ground never touches - slopes
+  and steps for ground adaptation, a low ledge for the vault event, a long lane for stride warping.
+- `AnimationBrowser` sample: in-game overlay (Tab) listing every clip with a name filter, playing any
+  of them on demand, toggling every tag as required or excluded, and showing the live frame, contact
+  state, stride warp and foot-slide numbers alongside.
+- `MotionMatchingController.PlayClipOverride` / `StopClipOverride` / `IsOverridingClip`: force-play a
+  database clip with matching suspended. Stride warping is held at 1 for the duration, so what is on
+  screen is the clip as baked rather than a scaled version of it.
+
 ## [1.5.0] - 2026-07-15
 
 Mocap data release. The demo could previously only be driven by procedurally authored clips, which
