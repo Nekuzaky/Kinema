@@ -19,6 +19,12 @@ namespace Kinema.MotionMatching.Samples
         [Tooltip("The vault motion event (clip + contact time + warp settings).")]
         [SerializeField] private MotionEventDefinition _vaultEvent;
 
+        [Tooltip("Free jump while moving, when no obstacle is ahead. Plays with its own root motion, no warp.")]
+        [SerializeField] private MotionEventDefinition _jumpMovingEvent;
+
+        [Tooltip("Free jump from standstill, when no obstacle is ahead.")]
+        [SerializeField] private MotionEventDefinition _jumpIdleEvent;
+
         [Tooltip("How far ahead an obstacle can be triggered (meters).")]
         [SerializeField, Range(0.5f, 3f)] private float _maxDistance = 1.4f;
 
@@ -60,16 +66,41 @@ namespace Kinema.MotionMatching.Samples
         private void Update()
         {
             CanVault = false;
-            if (_vaultEvent == null || !_controller.IsInitialized || _controller.IsPlayingEvent) return;
+            if (!_controller.IsInitialized || _controller.IsPlayingEvent) return;
 
-            if (!ProbeObstacle(out RaycastHit hit)) return;
-            CanVault = true;
+            if (_vaultEvent != null && ProbeObstacle(out RaycastHit hit))
+            {
+                CanVault = true;
 
-            // AI path: no input needed - vault as soon as the character is heading into the obstacle.
-            bool autoTriggered = _autoVault && Vector3.Dot(_controller.DesiredVelocity, Flatten(transform.forward)) > 0.3f;
+                // AI path: no input needed - vault as soon as the character is heading into the obstacle.
+                bool autoTriggered = _autoVault && Vector3.Dot(_controller.DesiredVelocity, Flatten(transform.forward)) > 0.3f;
 
-            if (autoTriggered || _vaultAction.WasPressedThisFrame())
-                Vault(hit);
+                if (autoTriggered || _vaultAction.WasPressedThisFrame())
+                {
+                    Debug.Log($"[Kinema] Vault over '{hit.collider.name}' (top {hit.collider.bounds.max.y - transform.position.y:F2} m).", this);
+                    Vault(hit);
+                }
+                return;
+            }
+
+            // Open ground: the same button is a free jump. The event plays unwarped, so the arc is
+            // the clip's own root motion; the motor already trusts vertical root motion during events.
+            if (_vaultAction.WasPressedThisFrame())
+            {
+                bool moving = _controller.DesiredVelocity.sqrMagnitude > 0.25f;
+                MotionEventDefinition jump = moving ? _jumpMovingEvent : _jumpIdleEvent;
+                if (jump == null) jump = moving ? _jumpIdleEvent : _jumpMovingEvent;
+                if (jump != null)
+                {
+                    Debug.Log($"[Kinema] Free jump ({(moving ? "moving" : "standing")}) with '{jump.name}'.", this);
+                    _controller.PlayEvent(jump, transform.position, Quaternion.LookRotation(Flatten(transform.forward), Vector3.up));
+                }
+                else
+                {
+                    // Say why nothing happened rather than eating the press silently.
+                    Debug.LogWarning("[Kinema] Jump pressed: no obstacle in the vault window and no free-jump event bound.", this);
+                }
+            }
         }
 
         private void OnDrawGizmosSelected()

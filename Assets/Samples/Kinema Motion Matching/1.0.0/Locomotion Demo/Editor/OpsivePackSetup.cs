@@ -103,7 +103,10 @@ namespace Kinema.MotionMatching.Samples.Editor
             {
                 RigPath = AssetDatabase.GetAssetPath(rig),
                 DatabasePath = DatabasePath,
-                VaultEventPath = CreateVaultEvent(clips)
+                VaultEventPath = CreateVaultEvent(clips),
+                // Free jumps play unwarped: the arc is the clip's own root motion.
+                JumpMovingEventPath = CreateJumpEvent(clips, "RunJumpRight", "OpsiveJumpMoving.asset"),
+                JumpIdleEventPath = CreateJumpEvent(clips, "IdleJump", "OpsiveJumpIdle.asset")
             };
             return true;
         }
@@ -141,6 +144,36 @@ namespace Kinema.MotionMatching.Samples.Editor
             AssetDatabase.SaveAssets();
 
             Debug.Log($"[Kinema] Vault event built from '{jump.name}' ({jump.length:F2}s). Space near a low obstacle.");
+            return path;
+        }
+
+        /// <summary>A free-jump event: no warp, the clip's root motion is the whole jump.</summary>
+        private static string CreateJumpEvent(AnimationClip[] clips, string clipName, string assetName)
+        {
+            AnimationClip clip = FindClip(clips, clipName);
+            if (clip == null)
+            {
+                Debug.LogWarning($"[Kinema] No '{clipName}' clip in the pack; that jump stays unbound.");
+                return null;
+            }
+
+            string path = OutputFolder + "/" + assetName;
+            var def = AssetDatabase.LoadAssetAtPath<MotionEventDefinition>(path);
+            if (def == null)
+            {
+                def = ScriptableObject.CreateInstance<MotionEventDefinition>();
+                AssetDatabase.CreateAsset(def, path);
+            }
+
+            var so = new SerializedObject(def);
+            so.FindProperty("_clip").objectReferenceValue = clip;
+            so.FindProperty("_contactTime").floatValue = Mathf.Clamp(clip.length * 0.4f, 0.1f, clip.length - 0.05f);
+            so.FindProperty("_blendIn").floatValue = 0.1f;
+            so.FindProperty("_warpPosition").boolValue = false;
+            so.FindProperty("_warpRotation").boolValue = false;
+            so.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(def);
+            AssetDatabase.SaveAssets();
             return path;
         }
 

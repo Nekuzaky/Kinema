@@ -4,6 +4,23 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.0] - 2026-07-15
+
+### Added
+- Free jump: Space (gamepad South) with no obstacle ahead now plays a jump event - RunJumpRight
+  while moving, IdleJump from standstill - unwarped, so the arc is the clip's own root motion.
+  Previously the button only vaulted, and only inside the 0.35-1.15 m obstacle window; open-ground
+  presses were eaten silently.
+- Every jump press now logs what it decided (vault over X / free jump / nothing bound and why), so
+  "it does not jump" becomes diagnosable from the Console.
+- Traversal course in the demo scene: three vault walls across the height window, gapped platforms
+  sized to the run-jump's travel, and rising steps - one lane that exercises the whole event system
+  in a single run.
+
+### Notes
+- With the v1.14.2 pruner fix actually comparing the right frames, idle pruning now removes 2,080
+  frames (4,705 -> 2,625, -44%); the buggy comparison had been under-pruning at -21%.
+
 ## [1.14.2] - 2026-07-15
 
 Audit pass over the v1.13-v1.14 code, adversarial reading rather than new features.

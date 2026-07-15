@@ -48,6 +48,8 @@ namespace Kinema.MotionMatching.Samples.Editor
             public string RigPath;
             public string DatabasePath;
             public string VaultEventPath;
+            public string JumpMovingEventPath;
+            public string JumpIdleEventPath;
         }
 
         #endregion
@@ -86,7 +88,7 @@ namespace Kinema.MotionMatching.Samples.Editor
                 return false;
             }
 
-            BuildScene(bake.RigPath, bake.DatabasePath, bake.VaultEventPath);
+            BuildScene(bake);
             return true;
         }
 
@@ -96,14 +98,16 @@ namespace Kinema.MotionMatching.Samples.Editor
         /// fake-null: the C# reference is alive, `== null` is true, and the wiring silently drops.
         /// Everything is therefore loaded from disk after the scene exists.
         /// </summary>
-        private static void BuildScene(string rigPath, string databasePath, string vaultEventPath)
+        private static void BuildScene(DemoBake bake)
         {
             DemoSceneBuilder.EnsureFolders();
             DemoSceneBuilder.NewDemoScene();
 
-            var rig = AssetDatabase.LoadAssetAtPath<GameObject>(rigPath);
-            var database = AssetDatabase.LoadAssetAtPath<MotionMatchingDatabase>(databasePath);
-            var vaultEvent = AssetDatabase.LoadAssetAtPath<MotionEventDefinition>(vaultEventPath);
+            var rig = AssetDatabase.LoadAssetAtPath<GameObject>(bake.RigPath);
+            var database = AssetDatabase.LoadAssetAtPath<MotionMatchingDatabase>(bake.DatabasePath);
+            var vaultEvent = AssetDatabase.LoadAssetAtPath<MotionEventDefinition>(bake.VaultEventPath);
+            var jumpMoving = AssetDatabase.LoadAssetAtPath<MotionEventDefinition>(bake.JumpMovingEventPath);
+            var jumpIdle = AssetDatabase.LoadAssetAtPath<MotionEventDefinition>(bake.JumpIdleEventPath);
 
             Debug.Log($"[Kinema] Demo scene from '{rig.name}': {database.ClipCount} clips, {database.FrameCount:N0} frames, " +
                       $"{(database.HasTags ? database.TagNames.Length : 0)} tags.");
@@ -118,7 +122,7 @@ namespace Kinema.MotionMatching.Samples.Editor
             DemoSceneBuilder.BuildEnvironment(ground, obstacle);
             BuildTestTerrain(obstacle);
 
-            GameObject character = BuildCharacter(rig, dbRef: database, vaultEvent: vaultEvent);
+            GameObject character = BuildCharacter(rig, database, vaultEvent, jumpMoving, jumpIdle);
             DemoSceneBuilder.WireCamera(character.transform);
             DemoSceneBuilder.ConfigureSun();
             Selection.activeGameObject = character;
@@ -156,9 +160,51 @@ namespace Kinema.MotionMatching.Samples.Editor
 
             // Long open lane: room to accelerate through the full speed range and watch stride warp.
             DemoSceneBuilder.CreateBox(root.transform, new Vector3(0f, 0.01f, 20f), new Vector3(3f, 0.02f, 26f), Quaternion.identity, material);
+
+            BuildTraversalCourse(material);
         }
 
-        private static GameObject BuildCharacter(GameObject rig, MotionMatchingDatabase dbRef, MotionEventDefinition vaultEvent)
+        /// <summary>
+        /// A traversal course down one lane: vault walls inside the trigger's height window, gaps
+        /// sized to the run-jump's root motion, and rising platforms. Everything the event system
+        /// claims to do, laid out so a single run exercises all of it in order.
+        /// </summary>
+        private static void BuildTraversalCourse(Material material)
+        {
+            var root = new GameObject("Traversal Course");
+            float x = -24f;
+
+            // Runway into the first wall.
+            DemoSceneBuilder.CreateBox(root.transform, new Vector3(x, 0.05f, -20f), new Vector3(4f, 0.1f, 10f), Quaternion.identity, material);
+
+            // Three vault walls, spaced for a stride between each, heights across the window.
+            foreach (float height in new[] { 0.5f, 0.75f, 1.0f })
+            {
+                DemoSceneBuilder.CreateBox(root.transform, new Vector3(x, height * 0.5f, -16f + height * 8f),
+                    new Vector3(3.5f, height, 0.4f), Quaternion.identity, material);
+            }
+
+            // Gapped platforms: jumpable with the run-jump's root motion (~1.5-2 m of travel).
+            float z = -2f;
+            foreach (float gap in new[] { 1.2f, 1.6f, 2.0f })
+            {
+                DemoSceneBuilder.CreateBox(root.transform, new Vector3(x, 0.3f, z), new Vector3(3.5f, 0.6f, 3f), Quaternion.identity, material);
+                z += 3f + gap;
+            }
+            DemoSceneBuilder.CreateBox(root.transform, new Vector3(x, 0.3f, z), new Vector3(3.5f, 0.6f, 3f), Quaternion.identity, material);
+
+            // Rising platforms: each step within the vault window from the previous top.
+            z += 4f;
+            for (int i = 0; i < 4; i++)
+            {
+                float height = 0.6f + i * 0.55f;
+                DemoSceneBuilder.CreateBox(root.transform, new Vector3(x, height * 0.5f, z + i * 2.6f),
+                    new Vector3(3.5f, height, 2.2f), Quaternion.identity, material);
+            }
+        }
+
+        private static GameObject BuildCharacter(GameObject rig, MotionMatchingDatabase dbRef,
+            MotionEventDefinition vaultEvent, MotionEventDefinition jumpMoving, MotionEventDefinition jumpIdle)
         {
             var character = (GameObject)PrefabUtility.InstantiatePrefab(rig);
             character.name = "Character";
@@ -188,10 +234,12 @@ namespace Kinema.MotionMatching.Samples.Editor
             // Only meaningful on a tagged set; on an untagged one it would warn every run.
             if (dbRef.HasTags) character.AddComponent<StanceTagController>();
 
-            if (vaultEvent != null)
+            if (vaultEvent != null || jumpMoving != null || jumpIdle != null)
             {
                 var vault = character.AddComponent<VaultTrigger>();
                 DemoSceneBuilder.SetObjectReference(vault, "_vaultEvent", vaultEvent);
+                DemoSceneBuilder.SetObjectReference(vault, "_jumpMovingEvent", jumpMoving);
+                DemoSceneBuilder.SetObjectReference(vault, "_jumpIdleEvent", jumpIdle);
             }
             else
             {
