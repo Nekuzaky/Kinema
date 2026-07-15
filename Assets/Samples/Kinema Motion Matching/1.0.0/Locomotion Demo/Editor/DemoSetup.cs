@@ -8,10 +8,13 @@ using UnityEngine;
 namespace Kinema.MotionMatching.Samples.Editor
 {
     /// <summary>
-    /// End-to-end demo bootstrap from a single FBX: forces a Humanoid import, resolves the real bone
-    /// names off the avatar, authors a config, bakes the database, and builds a fully wired scene
-    /// (rig + controller + collision motor + input + follow camera). One click from "raw FBX" to
-    /// "press Play".
+    /// Bakes a database from a single FBX dropped in the sample's Character folder: forces the right
+    /// import type, resolves real bone names off the avatar, authors a config and bakes.
+    ///
+    /// This is the fallback source when no mocap pack is installed. If the FBX carries locomotion
+    /// clips they are used; if it is just a skin, a procedural locomotion set is generated so the
+    /// demo works with nothing but a character. Scene building belongs to
+    /// <see cref="DemoSceneTool"/> - there is one definition of the demo scene, not one per source.
     /// </summary>
     public static class DemoSetup
     {
@@ -72,28 +75,22 @@ namespace Kinema.MotionMatching.Samples.Editor
             Object.DestroyImmediate(instance);
         }
 
-        [MenuItem("Tools/Kinema/Setup/Demo From FBX", priority = 21)]
-        public static void SetupFullDemo() => BuildFullDemo();
-
-        /// <summary>Headless entry point (Unity -executeMethod).</summary>
-        public static void BuildFullDemoFromCommandLine()
-        {
-            BuildFullDemo();
-            AssetDatabase.SaveAssets();
-            AssetDatabase.Refresh();
-        }
+        /// <summary>True when an FBX is present to bake from.</summary>
+        internal static bool FbxAvailable => !string.IsNullOrEmpty(FbxPath);
 
         #endregion
 
         #region Tools and Utilities
 
-        private static void BuildFullDemo()
+        internal static bool TryBake(out DemoSceneTool.DemoBake bake)
         {
+            bake = default;
+
             string fbxPath = FbxPath;
             if (string.IsNullOrEmpty(fbxPath) || AssetImporter.GetAtPath(fbxPath) is not ModelImporter)
             {
                 Debug.LogError($"[Kinema] No FBX found in {CharacterFolder}. Drop a Humanoid rig there and re-run.");
-                return;
+                return false;
             }
 
             // Prefer real locomotion clips if the user supplied any; otherwise generate a demo set so the
@@ -120,46 +117,53 @@ namespace Kinema.MotionMatching.Samples.Editor
             if (rig == null)
             {
                 Debug.LogError("[Kinema] Could not load the rig.");
-                return;
+                return false;
             }
 
             string[] boneNames = ResolveBoneNames(rig);
             Debug.Log($"[Kinema] Bones: [{string.Join(", ", boneNames)}]");
 
             // Vault motion event: procedural clip + event asset (Generic rig only; the demo default).
-            MotionEventDefinition vaultEvent = null;
+            string vaultEventPath = null;
             if (realClips.Length == 0)
             {
                 AnimationClip vaultClip = ProceduralLocomotionAuthor.GenerateVault(rig, EnsureGeneratedFolder());
-                vaultEvent = CreateOrUpdateVaultEvent(vaultClip);
+                vaultEventPath = CreateOrUpdateVaultEvent(vaultClip);
                 Debug.Log("[Kinema] Vault event ready (Space / gamepad South near a low obstacle).");
             }
 
             MotionMatchingConfig config = CreateOrLoadConfig();
             ConfigureAsset(config, rig, clips, boneNames);
 
-            MotionMatchingDatabase database = null;
-            if (clips.Length > 0)
+            if (clips.Length == 0)
             {
-                var existingDb = AssetDatabase.LoadAssetAtPath<MotionMatchingDatabase>(DatabasePath);
-                BakeReport report = MotionMatchingBaker.Bake(config, existingDb);
-                if (report.Success)
-                {
-                    database = report.Database;
-                    Debug.Log($"[Kinema] Baked {report.FrameCount:N0} frames from {report.ClipCount} clip(s) → {report.DatabasePath}");
-                    foreach (string w in report.Warnings) Debug.LogWarning("[Kinema] " + w);
-                }
-                else
-                {
-                    Debug.LogError("[Kinema] Bake failed: " + report.Error);
-                }
+                Debug.LogError("[Kinema] No clips to bake.");
+                return false;
             }
 
-            BuildScene(rig, database, vaultEvent);
+            var existingDb = AssetDatabase.LoadAssetAtPath<MotionMatchingDatabase>(DatabasePath);
+            BakeReport report = MotionMatchingBaker.Bake(config, existingDb);
+            if (!report.Success)
+            {
+                Debug.LogError("[Kinema] Bake failed: " + report.Error);
+                return false;
+            }
+            Debug.Log($"[Kinema] Baked {report.FrameCount:N0} frames from {report.ClipCount} clip(s) → {report.DatabasePath}");
+            foreach (string w in report.Warnings) Debug.LogWarning("[Kinema] " + w);
+
+            // Paths, not objects: creating the demo scene destroys these instances and leaves Unity
+            // fake-nulls behind. The scene builder reloads from disk.
+            bake = new DemoSceneTool.DemoBake
+            {
+                RigPath = fbxPath,
+                DatabasePath = DatabasePath,
+                VaultEventPath = vaultEventPath
+            };
+            return true;
         }
 
         /// <summary>The vault event asset: clip, contact at the hands-plant moment, horizontal warp only.</summary>
-        private static MotionEventDefinition CreateOrUpdateVaultEvent(AnimationClip vaultClip)
+        private static string CreateOrUpdateVaultEvent(AnimationClip vaultClip)
         {
             string path = DemoPaths.SampleRoot + "/VaultEvent.asset";
             var def = AssetDatabase.LoadAssetAtPath<MotionEventDefinition>(path);
@@ -178,7 +182,7 @@ namespace Kinema.MotionMatching.Samples.Editor
             so.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(def);
             AssetDatabase.SaveAssets();
-            return def;
+            return path;
         }
 
         /// <summary>Forces a model to import as Humanoid (idempotent). Returns false if it isn't a model.</summary>
@@ -301,62 +305,6 @@ namespace Kinema.MotionMatching.Samples.Editor
             so.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(config);
             AssetDatabase.SaveAssets();
-        }
-
-        private static void BuildScene(GameObject rig, MotionMatchingDatabase database, MotionEventDefinition vaultEvent = null)
-        {
-            DemoSceneBuilder.EnsureFolders();
-            DemoSceneBuilder.NewDemoScene();
-
-            (Material ground, Material obstacle) = DemoSceneBuilder.CreateMaterials();
-            DemoSceneBuilder.BuildEnvironment(ground, obstacle);
-
-            var character = (GameObject)PrefabUtility.InstantiatePrefab(rig);
-            character.name = "Character";
-            character.transform.position = Vector3.zero;
-            character.transform.rotation = Quaternion.identity;
-
-            var cc = character.GetComponent<CharacterController>();
-            if (cc == null) cc = character.AddComponent<CharacterController>();
-            cc.center = new Vector3(0f, 0.9f, 0f);
-            cc.radius = 0.3f;
-            cc.height = 1.8f;
-
-            var animator = character.GetComponent<Animator>();
-            if (animator == null) animator = character.AddComponent<Animator>();
-
-            var controller = character.AddComponent<MotionMatchingController>();
-            character.AddComponent<FootLockIK>();
-            character.AddComponent<GroundAdaptationIK>();
-            character.AddComponent<MotionQualityProbe>();
-            character.AddComponent<SessionRecorder>();
-            character.AddComponent<CharacterMotor>();
-            character.AddComponent<LocomotionInputProvider>();
-
-            // The bake's AssetDatabase.Refresh reimports freshly created assets and kills their
-            // in-memory instances (Unity fake-null), so the disk is the source of truth here.
-            var vaultRef = AssetDatabase.LoadAssetAtPath<MotionEventDefinition>(DemoPaths.SampleRoot + "/VaultEvent.asset");
-            if (vaultRef != null)
-            {
-                var vault = character.AddComponent<VaultTrigger>();
-                DemoSceneBuilder.SetObjectReference(vault, "_vaultEvent", vaultRef);
-            }
-
-            // Reload from disk so the reference is a persisted asset (guid-resolvable) at save time.
-            MotionMatchingDatabase dbRef = AssetDatabase.LoadAssetAtPath<MotionMatchingDatabase>(DatabasePath) ?? database;
-            Debug.Log($"[Kinema] Assigning database ref: {(dbRef != null ? dbRef.name : "NULL")}");
-            DemoSceneBuilder.SetObjectReference(controller, "_database", dbRef);
-            DemoSceneBuilder.SetObjectReference(controller, "_animator", animator);
-            PrefabUtility.RecordPrefabInstancePropertyModifications(controller);
-
-            DemoSceneBuilder.WireCamera(character.transform);
-            DemoSceneBuilder.ConfigureSun();
-            Selection.activeGameObject = character;
-
-            var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
-            EditorSceneManager.MarkSceneDirty(scene);
-            EditorSceneManager.SaveScene(scene, DemoSceneBuilder.ScenePath);
-            Debug.Log($"[Kinema] Full demo scene saved → {DemoSceneBuilder.ScenePath}");
         }
 
         #endregion

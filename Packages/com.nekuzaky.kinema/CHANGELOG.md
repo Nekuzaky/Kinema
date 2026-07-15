@@ -4,6 +4,21 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-07-15
+
+### Changed
+- One demo generator: `Tools > Kinema > Demo Scene`. It picks its own source, best first - an
+  installed mocap pack, otherwise an FBX in the sample's Character folder (using its clips, or
+  generating a procedural set if it is only a skin) - bakes it, and builds the scene. There were four
+  generators before (`Demo Scene`, `Setup > Demo From FBX`, `Setup > Demo From Opsive Pack`,
+  `Setup > Placeholder Scene`), each with its own idea of what the demo scene was.
+- Every source now funnels through one bake contract (`DemoBake`: rig, database and vault event
+  paths) and one scene builder, so the demo means one thing rather than one thing per source.
+
+### Removed
+- The `Setup` submenu and the placeholder-scene generator. A capsule with no data has nothing left to
+  demonstrate now that the generator resolves its own source.
+
 ## [1.7.1] - 2026-07-15
 
 ### Fixed

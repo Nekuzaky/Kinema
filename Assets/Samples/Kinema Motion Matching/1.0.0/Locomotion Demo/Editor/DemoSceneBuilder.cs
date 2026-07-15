@@ -6,9 +6,9 @@ using UnityEngine.SceneManagement;
 namespace Kinema.MotionMatching.Samples.Editor
 {
     /// <summary>
-    /// Builds the demo environment (ground, obstacles, camera, sun) and a placeholder character.
-    /// The environment helpers are reused by <see cref="DemoSetup"/> when a real rig is available, so
-    /// there is exactly one definition of "what the demo scene looks like".
+    /// Reusable pieces of the demo environment: ground, obstacles, camera, sun, materials.
+    /// <see cref="DemoSceneTool"/> assembles them, so there is exactly one definition of "what the
+    /// demo scene looks like" no matter which source the data was baked from.
     /// </summary>
     public static class DemoSceneBuilder
     {
@@ -16,23 +16,6 @@ namespace Kinema.MotionMatching.Samples.Editor
 
         internal static string DemoFolder => DemoPaths.SampleRoot;
         internal static string ScenePath => DemoPaths.ScenePath;
-
-        [MenuItem("Tools/Kinema/Setup/Placeholder Scene (no rig)", priority = 40)]
-        public static void BuildMenu()
-        {
-            string path = BuildPlaceholder();
-            EditorSceneManager.OpenScene(path);
-            Debug.Log($"[Kinema] Placeholder demo built → {path}. Use 'Setup Full Demo From FBX' to wire a real rig.");
-        }
-
-        /// <summary>Entry point for headless generation (Unity -executeMethod).</summary>
-        public static void BuildFromCommandLine()
-        {
-            string path = BuildPlaceholder();
-            AssetDatabase.SaveAssets();
-            AssetDatabase.Refresh();
-            Debug.Log($"[Kinema] Placeholder demo built (batch) → {path}");
-        }
 
         #endregion
 
@@ -144,50 +127,5 @@ namespace Kinema.MotionMatching.Samples.Editor
 
         #endregion
 
-        #region Tools and Utilities — Placeholder build
-
-        private static string BuildPlaceholder()
-        {
-            EnsureFolders();
-            Scene scene = NewDemoScene();
-
-            (Material ground, Material obstacle) = CreateMaterials();
-            BuildEnvironment(ground, obstacle);
-
-            GameObject character = BuildPlaceholderCharacter();
-            WireCamera(character.transform);
-            ConfigureSun();
-
-            EditorSceneManager.MarkSceneDirty(scene);
-            EditorSceneManager.SaveScene(scene, ScenePath);
-            return ScenePath;
-        }
-
-        private static GameObject BuildPlaceholderCharacter()
-        {
-            var character = new GameObject("Character");
-
-            var cc = character.AddComponent<CharacterController>();
-            cc.center = new Vector3(0f, 0.9f, 0f);
-            cc.radius = 0.3f;
-            cc.height = 1.8f;
-
-            character.AddComponent<Animator>();
-            character.AddComponent<MotionMatchingController>();
-            character.AddComponent<CharacterMotor>();
-            character.AddComponent<LocomotionInputProvider>();
-
-            GameObject visual = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-            visual.name = "Placeholder Visual (replace with rig)";
-            Object.DestroyImmediate(visual.GetComponent<Collider>());
-            visual.transform.SetParent(character.transform, false);
-            visual.transform.localPosition = new Vector3(0f, 0.9f, 0f);
-            visual.transform.localScale = new Vector3(0.5f, 0.9f, 0.5f);
-
-            Selection.activeGameObject = character;
-            return character;
-        }
-
-        #endregion
     }
 }

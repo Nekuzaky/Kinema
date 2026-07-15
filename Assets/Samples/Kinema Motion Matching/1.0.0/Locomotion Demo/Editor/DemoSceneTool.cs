@@ -5,11 +5,12 @@ using UnityEngine;
 namespace Kinema.MotionMatching.Samples.Editor
 {
     /// <summary>
-    /// Tools > Kinema > Demo Scene: bakes everything available and builds the scene to exercise it.
+    /// Tools > Kinema > Demo Scene: the one and only demo generator.
     ///
-    /// One trip. When a mocap pack is installed it is baked from scratch here - all of it, every
-    /// clip - rather than requiring a separate setup step first. Failing that, the richest database
-    /// already baked in the project is used.
+    /// It picks its own source, best first - an installed mocap pack, otherwise an FBX dropped in the
+    /// sample's Character folder (using its clips, or generating a procedural set if it is just a
+    /// skin) - bakes it, and builds the scene. Every source funnels through the same bake contract
+    /// and the same scene builder, so "the demo" means one thing rather than one thing per source.
     ///
     /// The scene is built to provoke the subsystems flat ground never touches: slopes and steps for
     /// ground adaptation, a low ledge for the vault event, a long lane for stride warping. It also
@@ -41,47 +42,51 @@ namespace Kinema.MotionMatching.Samples.Editor
             AssetDatabase.Refresh();
         }
 
-        /// <summary>Builds the scene from an already-completed pack bake, so setup runs only once.</summary>
-        internal static void BuildSceneFrom(OpsivePackSetup.PackBake bake)
+        /// <summary>What every bake source hands back: paths to the rig, the database and the vault event.</summary>
+        internal struct DemoBake
         {
-            BuildScene(bake.RigPath, bake.DatabasePath, bake.VaultEventPath);
+            public string RigPath;
+            public string DatabasePath;
+            public string VaultEventPath;
         }
 
         #endregion
 
         #region Tools and Utilities — Build
 
+        /// <summary>
+        /// Source order is quality order: real mocap beats a hand-dropped FBX, which beats nothing.
+        /// Each source bakes from scratch, so the scene always matches the data on disk.
+        /// </summary>
         private static bool Build(out string error)
         {
             error = null;
+            DemoBake bake;
 
-            // A mocap pack is the best data available, so bake all of it here rather than leaving the
-            // user to discover a separate setup step.
             if (OpsivePackSetup.PackAvailable)
             {
-                if (!OpsivePackSetup.TryBake(out OpsivePackSetup.PackBake bake))
+                if (!OpsivePackSetup.TryBake(out bake))
                 {
                     error = "The mocap pack is installed but could not be baked. See the Console for the reason.";
                     return false;
                 }
-                BuildSceneFrom(bake);
-                return true;
             }
-
-            MotionMatchingConfig config = FindRichestConfig(out MotionMatchingDatabase database, out string databasePath);
-            if (config == null)
+            else if (DemoSetup.FbxAvailable)
             {
-                error = "No mocap pack and no baked database found. Run Tools > Kinema > Setup > Demo From FBX first, " +
-                        "then build the demo scene.";
+                if (!DemoSetup.TryBake(out bake))
+                {
+                    error = "An FBX was found but could not be baked. See the Console for the reason.";
+                    return false;
+                }
+            }
+            else
+            {
+                error = $"Nothing to build from. Install a mocap pack, or drop a character FBX in " +
+                        $"{DemoPaths.Character} and run this again.";
                 return false;
             }
-            if (config.RigPrefab == null)
-            {
-                error = $"'{config.name}' has no rig prefab assigned, so there is nothing to animate.";
-                return false;
-            }
 
-            BuildScene(AssetDatabase.GetAssetPath(config.RigPrefab), databasePath, DemoPaths.SampleRoot + "/VaultEvent.asset");
+            BuildScene(bake.RigPath, bake.DatabasePath, bake.VaultEventPath);
             return true;
         }
 
@@ -203,36 +208,5 @@ namespace Kinema.MotionMatching.Samples.Editor
 
         #endregion
 
-        #region Tools and Utilities — Discovery
-
-        /// <summary>
-        /// Picks the baked config with the most frames: "all the animations" means the richest set
-        /// available, and it keeps the tool argument-free as packs are added.
-        /// </summary>
-        private static MotionMatchingConfig FindRichestConfig(out MotionMatchingDatabase database, out string databasePath)
-        {
-            database = null;
-            databasePath = null;
-            MotionMatchingConfig best = null;
-
-            foreach (string guid in AssetDatabase.FindAssets("t:MotionMatchingConfig"))
-            {
-                string configPath = AssetDatabase.GUIDToAssetPath(guid);
-                var config = AssetDatabase.LoadAssetAtPath<MotionMatchingConfig>(configPath);
-                if (config == null || config.RigPrefab == null) continue;
-
-                string candidatePath = configPath.Substring(0, configPath.Length - ".asset".Length) + "Database.asset";
-                var candidate = AssetDatabase.LoadAssetAtPath<MotionMatchingDatabase>(candidatePath);
-                if (candidate == null || !candidate.IsValid) continue;
-
-                if (database != null && candidate.FrameCount <= database.FrameCount) continue;
-                best = config;
-                database = candidate;
-                databasePath = candidatePath;
-            }
-            return best;
-        }
-
-        #endregion
     }
 }

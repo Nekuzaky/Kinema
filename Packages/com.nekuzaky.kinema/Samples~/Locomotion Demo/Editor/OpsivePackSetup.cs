@@ -2,13 +2,12 @@ using System.Collections.Generic;
 using System.Linq;
 using Kinema.MotionMatching.Editor;
 using UnityEditor;
-using UnityEditor.SceneManagement;
 using UnityEngine;
 
 namespace Kinema.MotionMatching.Samples.Editor
 {
     /// <summary>
-    /// Builds the demo from an Opsive OmniAnimation locomotion pack: a real mocap set with the
+    /// Bakes a database from an Opsive OmniAnimation locomotion pack: a real mocap set with the
     /// coverage motion matching actually needs - walk/run/sprint in every direction, diagonals,
     /// strafes, turn-in-place, and (rarely available elsewhere) proper starts and stops.
     ///
@@ -49,44 +48,19 @@ namespace Kinema.MotionMatching.Samples.Editor
             ("Jump",     "Jump")
         };
 
-        [MenuItem("Tools/Kinema/Setup/Demo From Opsive Pack", priority = 22)]
-        public static void SetupMenu() => Build();
-
-        /// <summary>Headless entry point (Unity -executeMethod).</summary>
-        public static void BuildFromCommandLine()
-        {
-            Build();
-            AssetDatabase.SaveAssets();
-            AssetDatabase.Refresh();
-        }
-
         #endregion
 
         #region Tools and Utilities
 
-        private static void Build()
-        {
-            if (!TryBake(out PackBake bake)) return;
-            DemoSceneTool.BuildSceneFrom(bake);
-        }
-
         /// <summary>True when the pack is present in the project at the expected path.</summary>
         internal static bool PackAvailable => AssetDatabase.IsValidFolder(ClipFolder);
-
-        /// <summary>Everything a scene builder needs from a completed bake.</summary>
-        internal struct PackBake
-        {
-            public string RigPath;
-            public string DatabasePath;
-            public string VaultEventPath;
-        }
 
         /// <summary>
         /// Resolves the rig, bakes every clip in the pack, and authors the vault event. Split out from
         /// scene building so the Demo Scene tool can run the whole setup itself rather than requiring
         /// a separate menu trip.
         /// </summary>
-        internal static bool TryBake(out PackBake bake)
+        internal static bool TryBake(out DemoSceneTool.DemoBake bake)
         {
             bake = default;
 
@@ -125,7 +99,7 @@ namespace Kinema.MotionMatching.Samples.Editor
 
             // Paths, not objects: creating the demo scene unloads unreferenced assets and destroys
             // these instances, leaving Unity fake-nulls behind. The scene builder reloads from disk.
-            bake = new PackBake
+            bake = new DemoSceneTool.DemoBake
             {
                 RigPath = AssetDatabase.GetAssetPath(rig),
                 DatabasePath = DatabasePath,
