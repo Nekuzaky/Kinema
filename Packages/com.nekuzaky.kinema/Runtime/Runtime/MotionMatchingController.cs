@@ -122,6 +122,9 @@ namespace Kinema.MotionMatching
         /// <summary>True while a clip is being force-played by <see cref="PlayClipOverride"/>.</summary>
         public bool IsOverridingClip => _clipOverride;
 
+        /// <summary>Freezes the override clock so an editor timeline can scrub. Only read while overriding.</summary>
+        public bool OverridePaused { get; set; }
+
         /// <summary>Ring buffer of the last matching decisions, for the snapshot debugger.</summary>
         public SearchSnapshotRecorder Snapshots => _snapshots;
 
@@ -554,6 +557,7 @@ namespace Kinema.MotionMatching
         private void AdvanceClocks(float dt)
         {
             float step = dt * _playbackSpeed * _currentStrideWarp;
+            if (_clipOverride && OverridePaused) step = 0f;
             double before = _slotTime[_activeSlot];
             _slotTime[_activeSlot] = WrapTime(_slotClipIndex[_activeSlot], before + step);
             if (_blending)
@@ -736,7 +740,21 @@ namespace Kinema.MotionMatching
         {
             if (!_clipOverride) return;
             _clipOverride = false;
+            OverridePaused = false;
             _searchTimer = 0f;
+        }
+
+        /// <summary>Scrubs the override clip to a local time. Timeline support; no-op unless overriding.</summary>
+        public void SetClipOverrideTime(float time)
+        {
+            if (!_clipOverride) return;
+            int clipIndex = _slotClipIndex[_activeSlot];
+            if (clipIndex < 0) return;
+
+            ApplySlotState(_activeSlot, clipIndex, time);
+            ApplySlotState(1 - _activeSlot, clipIndex, time);
+            ApplySlotTimes();
+            _graph.Evaluate(0f);
         }
 
         /// <summary>

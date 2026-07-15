@@ -12,11 +12,12 @@ namespace Kinema.MotionMatching.Editor
     {
         #region Private and Protected
 
-        private enum Tab { Overview, Database, Bake, Tags, Debug, Analysis, Settings }
-        private static readonly string[] TabNames = { "Overview", "Database", "Bake", "Tags", "Debug", "Analysis", "Settings" };
+        private enum Tab { Overview, Database, Bake, Tags, Director, Debug, Analysis, Settings }
+        private static readonly string[] TabNames = { "Overview", "Database", "Bake", "Tags", "Director", "Debug", "Analysis", "Settings" };
 
         private readonly TagTimelineDrawer _tagDrawer = new TagTimelineDrawer();
         private readonly AnalysisTabDrawer _analysisDrawer = new AnalysisTabDrawer();
+        private readonly DirectorTabDrawer _directorDrawer = new DirectorTabDrawer();
 
         [SerializeField] private MotionMatchingConfig _config;
         [SerializeField] private MotionMatchingDatabase _database;
@@ -58,7 +59,7 @@ namespace Kinema.MotionMatching.Editor
         private void OnInspectorUpdate()
         {
             // Keep the live tabs updating during play without hammering repaint elsewhere.
-            if ((_tab == Tab.Debug || _tab == Tab.Analysis) && Application.isPlaying)
+            if ((_tab == Tab.Debug || _tab == Tab.Analysis || _tab == Tab.Director) && Application.isPlaying)
                 Repaint();
         }
 
@@ -75,6 +76,7 @@ namespace Kinema.MotionMatching.Editor
                 case Tab.Database: DrawDatabase(); break;
                 case Tab.Bake: DrawBake(); break;
                 case Tab.Tags: DrawTags(); break;
+                case Tab.Director: _directorDrawer.Draw(_controller); break;
                 case Tab.Debug: DrawDebug(); break;
                 case Tab.Analysis: DrawAnalysis(); break;
                 case Tab.Settings: DrawSettings(); break;
@@ -86,12 +88,24 @@ namespace Kinema.MotionMatching.Editor
 
         #region Tools and Utilities — Header
 
+        private static string _version;
+
         private void DrawHeader()
         {
+            if (_version == null)
+            {
+                var package = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(MotionMatchingWindow).Assembly);
+                _version = package != null ? "v" + package.version : "";
+            }
+
             using (new EditorGUILayout.HorizontalScope())
             {
                 GUILayout.Label("Motion Matching", MotionMatchingStyles.Title);
+                if (!string.IsNullOrEmpty(_version))
+                    GUILayout.Label(_version, MotionMatchingStyles.KeyLabel, GUILayout.ExpandWidth(false));
                 GUILayout.FlexibleSpace();
+                if (Application.isPlaying)
+                    MotionMatchingStyles.StatusPill("LIVE", MotionMatchingStyles.Accent);
                 DrawStatusPill();
             }
             DrawSeparator();

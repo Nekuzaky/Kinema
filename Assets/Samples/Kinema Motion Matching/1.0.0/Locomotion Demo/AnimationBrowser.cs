@@ -63,6 +63,9 @@ namespace Kinema.MotionMatching.Samples
         {
             Keyboard keyboard = Keyboard.current;
             if (keyboard != null && keyboard[_toggleKey].wasPressedThisFrame) _visible = !_visible;
+
+            Gamepad gamepad = Gamepad.current;
+            if (gamepad != null && gamepad.startButton.wasPressedThisFrame) _visible = !_visible;
         }
 
         private void OnGUI()

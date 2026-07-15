@@ -1,0 +1,300 @@
+using System;
+using UnityEditor;
+using UnityEngine;
+
+namespace Kinema.MotionMatching.Editor
+{
+    /// <summary>
+    /// The Director tab: play the data like an animator, record performances, direct ghosts.
+    ///
+    /// Playback here means clip override - the matcher is suspended and one database clip owns the
+    /// pose, with a scrubbable timeline. That is the "custom Animator" view of a motion matching
+    /// database: the same inspection you would do in the Animation window, but on the live character
+    /// with IK and retargeting applied.
+    ///
+    /// Recording captures both layers of a performance: intent (session recording - what you asked
+    /// for, replayable by ghosts through their own matching) and pose (what ended up on screen,
+    /// bakeable to an AnimationClip). Only runtime types are touched, so the tab works with any
+    /// character, not just the shipped sample.
+    /// </summary>
+    public sealed class DirectorTabDrawer
+    {
+        #region Private and Protected
+
+        private Vector2 _clipScroll;
+        private string _clipFilter = "";
+        private int _selectedClip = -1;
+        private string _saveMessage;
+        private bool _loopGhosts = true;
+        private SessionRecording _lastRecording;
+        private static readonly Color GhostTint = new Color(0.2f, 0.9f, 1f, 1f);
+
+        #endregion
+
+        #region Main API
+
+        public void Draw(MotionMatchingController controller)
+        {
+            if (controller == null)
+            {
+                MotionMatchingStyles.HelpRow("Select a character with a MotionMatchingController to direct.", MessageType.Info);
+                return;
+            }
+            if (!Application.isPlaying || !controller.IsInitialized)
+            {
+                MotionMatchingStyles.HelpRow("Enter Play mode. The Director plays any database clip on the live character, records takes, and sends ghosts out to redo your trajectory.", MessageType.Info);
+                return;
+            }
+
+            DrawPlayback(controller);
+            DrawRecording(controller);
+            DrawGhosts(controller);
+        }
+
+        #endregion
+
+        #region Tools and Utilities — Playback
+
+        private void DrawPlayback(MotionMatchingController controller)
+        {
+            MotionMatchingDatabase db = controller.Database;
+
+            using (MotionMatchingStyles.BeginSection("Playback — clip override"))
+            {
+                bool overriding = controller.IsOverridingClip;
+                int playingClip = controller.CurrentClipIndex;
+
+                // Transport row.
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    using (new EditorGUI.DisabledScope(!overriding))
+                    {
+                        if (GUILayout.Button("|<", GUILayout.Width(32))) controller.SetClipOverrideTime(0f);
+                        if (GUILayout.Button(controller.OverridePaused ? "▶" : "||", GUILayout.Width(32)))
+                            controller.OverridePaused = !controller.OverridePaused;
+                    }
+
+                    if (GUILayout.Button(overriding ? "Back to matching" : "Override current clip", GUILayout.Width(150)))
+                    {
+                        if (overriding) controller.StopClipOverride();
+                        else if (playingClip >= 0) Play(controller, playingClip);
+                    }
+
+                    GUILayout.FlexibleSpace();
+                    MotionMatchingStyles.StatusPill(overriding ? "DIRECTING" : "MATCHING",
+                        overriding ? MotionMatchingStyles.Warning : MotionMatchingStyles.Ok);
+                }
+
+                // Timeline: playhead over the active clip, scrubbable while overriding.
+                if (playingClip >= 0)
+                {
+                    MotionClipEntry entry = db.GetClip(playingClip);
+                    float length = entry.Clip != null ? entry.Clip.length : entry.FrameCount / (float)db.BakeFrameRate;
+                    float time = Mathf.Clamp(controller.CurrentClipTime, 0f, length);
+
+                    GUILayout.Space(2);
+                    GUILayout.Label($"{entry.Name}   {time:F2}s / {length:F2}s", MotionMatchingStyles.ValueLabel);
+
+                    Rect rect = GUILayoutUtility.GetRect(120, 22, GUILayout.ExpandWidth(true));
+                    DrawTimeline(rect, db, playingClip, time / Mathf.Max(1e-4f, length));
+
+                    if (overriding)
+                    {
+                        Event e = Event.current;
+                        if ((e.type == EventType.MouseDown || e.type == EventType.MouseDrag) && rect.Contains(e.mousePosition))
+                        {
+                            controller.OverridePaused = true;
+                            controller.SetClipOverrideTime(Mathf.Clamp01((e.mousePosition.x - rect.x) / rect.width) * length);
+                            e.Use();
+                        }
+                    }
+                    else
+                    {
+                        MotionMatchingStyles.HelpRow("Live matching: the playhead shows what the matcher picked. Override to scrub by hand.", MessageType.None);
+                    }
+                }
+
+                // Clip list.
+                _clipFilter = EditorGUILayout.TextField(_clipFilter, EditorStyles.toolbarSearchField);
+                _clipScroll = EditorGUILayout.BeginScrollView(_clipScroll, GUILayout.MaxHeight(170));
+                for (int i = 0; i < db.ClipCount; i++)
+                {
+                    string name = db.GetClip(i).Name;
+                    if (!string.IsNullOrEmpty(_clipFilter) &&
+                        name.IndexOf(_clipFilter, StringComparison.OrdinalIgnoreCase) < 0) continue;
+
+                    bool active = overriding ? i == _selectedClip : i == playingClip;
+                    var style = new GUIStyle(EditorStyles.miniButton) { alignment = TextAnchor.MiddleLeft };
+                    if (active) style.fontStyle = FontStyle.Bold;
+                    if (GUILayout.Button($"{i:00}  {name}", style)) Play(controller, i);
+                }
+                EditorGUILayout.EndScrollView();
+            }
+        }
+
+        private void Play(MotionMatchingController controller, int clipIndex)
+        {
+            _selectedClip = clipIndex;
+            controller.PlayClipOverride(clipIndex);
+            controller.OverridePaused = false;
+        }
+
+        /// <summary>Timeline bar with contact lanes underneath - the animator-style read of a baked clip.</summary>
+        private static void DrawTimeline(Rect rect, MotionMatchingDatabase db, int clipIndex, float playhead01)
+        {
+            EditorGUI.DrawRect(rect, new Color(0f, 0f, 0f, 0.35f));
+
+            // Contact lanes: one thin strip per contact bone, filled where that foot is planted.
+            if (db.HasContacts && db.ContactBoneCount > 0)
+            {
+                MotionClipEntry entry = db.GetClip(clipIndex);
+                float laneHeight = 4f;
+                for (int bone = 0; bone < db.ContactBoneCount; bone++)
+                {
+                    float y = rect.yMax - laneHeight * (bone + 1);
+                    for (int f = 0; f < entry.FrameCount; f++)
+                    {
+                        if ((db.GetContacts(entry.StartFrame + f) & (1 << bone)) == 0) continue;
+                        float x0 = rect.x + rect.width * (f / (float)entry.FrameCount);
+                        float x1 = rect.x + rect.width * ((f + 1) / (float)entry.FrameCount);
+                        EditorGUI.DrawRect(new Rect(x0, y, x1 - x0 + 0.5f, laneHeight - 1f), MotionMatchingStyles.Ok * new Color(1, 1, 1, 0.55f));
+                    }
+                }
+            }
+
+            var head = new Rect(rect.x + rect.width * Mathf.Clamp01(playhead01) - 1f, rect.y, 2f, rect.height);
+            EditorGUI.DrawRect(head, MotionMatchingStyles.Accent);
+        }
+
+        #endregion
+
+        #region Tools and Utilities — Recording
+
+        private void DrawRecording(MotionMatchingController controller)
+        {
+            var session = controller.GetComponent<SessionRecorder>();
+            var pose = controller.GetComponent<PoseRecorder>();
+
+            using (MotionMatchingStyles.BeginSection("Record"))
+            {
+                if (session == null)
+                {
+                    MotionMatchingStyles.HelpRow("Add a Session Recorder to capture takes.", MessageType.Info);
+                    if (GUILayout.Button("Add Session Recorder")) Undo.AddComponent<SessionRecorder>(controller.gameObject);
+                    return;
+                }
+
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    MotionMatchingStyles.StatCard(session.RecordedFrameCount.ToString("N0"), "Frames", MotionMatchingStyles.Accent);
+                    MotionMatchingStyles.StatCard(session.RecordedDuration.ToString("F1") + "s", "Duration", MotionMatchingStyles.Accent);
+                    if (session.IsRecording) MotionMatchingStyles.StatCard("REC", "Capturing", MotionMatchingStyles.Error);
+                    else if (_lastRecording != null) MotionMatchingStyles.StatCard(_lastRecording.Duration.ToString("F1") + "s", "Last take", MotionMatchingStyles.Ok);
+                }
+
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    if (!session.IsRecording)
+                    {
+                        if (GUILayout.Button("● Record"))
+                        {
+                            session.StartRecording();
+                            if (pose != null) pose.StartRecording();
+                        }
+                    }
+                    else if (GUILayout.Button("■ Stop"))
+                    {
+                        session.StopRecording();
+                        if (pose != null) pose.StopRecording();
+                        if (session.RecordedFrameCount >= 2)
+                        {
+                            _lastRecording = ScriptableObject.CreateInstance<SessionRecording>();
+                            session.WriteTo(_lastRecording, DateTime.UtcNow.ToString("u"));
+                        }
+                    }
+
+                    using (new EditorGUI.DisabledScope(session.IsRecording || _lastRecording == null))
+                        if (GUILayout.Button("Save Session Asset")) SaveSession();
+
+                    using (new EditorGUI.DisabledScope(session.IsRecording || pose == null || pose.LastTake == null || !pose.LastTake.IsValid))
+                        if (GUILayout.Button("Bake Animation Clip")) BakeClip(pose.LastTake);
+                }
+
+                if (pose == null)
+                    MotionMatchingStyles.HelpRow("No Pose Recorder on this character: takes replay as ghosts but cannot bake to an AnimationClip.", MessageType.Info);
+                if (!string.IsNullOrEmpty(_saveMessage))
+                    MotionMatchingStyles.HelpRow(_saveMessage, MessageType.Info);
+            }
+        }
+
+        private void SaveSession()
+        {
+            string path = EditorUtility.SaveFilePanelInProject("Save Session Recording", "SessionTake", "asset",
+                "Recorded intent: replayable by ghosts and the Replay Locomotion Provider.");
+            if (string.IsNullOrEmpty(path)) return;
+
+            var asset = AssetDatabase.LoadAssetAtPath<SessionRecording>(path);
+            if (asset == null)
+            {
+                asset = ScriptableObject.CreateInstance<SessionRecording>();
+                AssetDatabase.CreateAsset(asset, path);
+            }
+            EditorUtility.CopySerialized(_lastRecording, asset);
+            EditorUtility.SetDirty(asset);
+            AssetDatabase.SaveAssets();
+            _saveMessage = $"Session saved to {path}.";
+            EditorGUIUtility.PingObject(asset);
+        }
+
+        private void BakeClip(PoseTake take)
+        {
+            string path = EditorUtility.SaveFilePanelInProject("Bake Take As Animation Clip", "RecordedTake", "anim",
+                $"{take.FrameCount} frames, {take.Duration:F1}s, {take.BoneCount} bones.");
+            if (string.IsNullOrEmpty(path)) return;
+
+            AnimationClip clip = PoseClipBaker.Bake(take, path);
+            if (clip != null)
+            {
+                _saveMessage = $"Baked {take.Duration:F1}s to {path}. Transform-curve clip: plays on a rig read as Generic; a Humanoid Animator ignores transform curves.";
+                EditorGUIUtility.PingObject(clip);
+            }
+        }
+
+        #endregion
+
+        #region Tools and Utilities — Ghosts
+
+        private void DrawGhosts(MotionMatchingController controller)
+        {
+            using (MotionMatchingStyles.BeginSection("Ghosts — redo the trajectory"))
+            {
+                MotionMatchingStyles.HelpRow(
+                    "A ghost replays the take's intent through its own matching: it redoes where you went rather than playing a video of you. Two ghosts from one take can differ slightly - that is the system working.",
+                    MessageType.None);
+
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    _loopGhosts = GUILayout.Toggle(_loopGhosts, "Loop", GUILayout.Width(60));
+
+                    using (new EditorGUI.DisabledScope(_lastRecording == null || !_lastRecording.IsValid))
+                    {
+                        if (GUILayout.Button("Spawn Ghost"))
+                            GhostSpawner.Spawn(controller, _lastRecording, _loopGhosts, GhostTint);
+                    }
+
+                    if (GUILayout.Button("Clear Ghosts"))
+                    {
+                        foreach (ReplayLocomotionProvider replay in UnityEngine.Object.FindObjectsByType<ReplayLocomotionProvider>(FindObjectsSortMode.None))
+                            if (replay.gameObject != controller.gameObject)
+                                UnityEngine.Object.Destroy(replay.gameObject);
+                    }
+                }
+
+                if (_lastRecording == null)
+                    MotionMatchingStyles.HelpRow("Record a take first - the in-game shortcuts (R / gamepad Select) feed the same recorders.", MessageType.Info);
+            }
+        }
+
+        #endregion
+    }
+}

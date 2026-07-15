@@ -4,6 +4,37 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-07-15
+
+Director release: the record/ghost/playback controls move into the editor window, and the demo
+gets full gamepad coverage.
+
+### Added
+- Director tab in the Motion Matching window. Plays any database clip on the live character like a
+  custom Animator: transport controls, a scrubbable timeline with per-foot contact lanes drawn from
+  the baked data, pause, and a filterable clip list. Playback is the clip-override path, so what is
+  on screen is the baked clip through the real graph - IK and retargeting included.
+- Recording from the window: capture intent and pose together, save the session as an asset, bake
+  the pose take to an AnimationClip - same recorders the in-game overlay drives.
+- Ghost direction from the window: spawn and clear ghosts without touching the game overlay.
+- `GhostSpawner` (runtime): ghost creation shared by the window and the sample hotkeys. Strips the
+  clone by whitelist (controller, IK) rather than blacklist, so project gameplay scripts are removed
+  without the runtime knowing their types. Ghosts keep no collision motor - the traditional rule.
+- `MotionMatchingController.OverridePaused` / `SetClipOverrideTime`: freeze and scrub the override
+  clock, which is what makes the timeline a timeline.
+- Full gamepad map: record on Select, ghost on right shoulder, clear on dpad-down, browser overlay
+  on Start (all alongside the existing keyboard keys), and the follow camera now orbits with the
+  right stick or middle-mouse drag - identical framing to before until the stick is touched.
+- Example take shipped with the sample (`Takes/ExampleTake.asset`): a recorded session - intent
+  only, velocities and trajectory - replayable by ghosts out of the box.
+
+### Changed
+- Window header shows the package version and a LIVE pill during play.
+
+### Notes
+- Recorded pose takes made from the Opsive pack are resampled licensed mocap and stay out of the
+  repository; the example take carries intent only, which is why it can ship.
+
 ## [1.8.1] - 2026-07-15
 
 ### Changed
