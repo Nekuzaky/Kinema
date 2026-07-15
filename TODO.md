@@ -70,7 +70,7 @@ left, roughly in priority order within each section.
 ## Process
 
 - [x] EditMode automated tests (50 tests, `Tests/Editor`) - **done**.
-- [x] CI workflow (`.github/workflows/tests.yml`, GitHub Actions via game-ci) - **configured**,
-      needs a `UNITY_LICENSE` repository secret added by the repo owner to actually run green.
+- [ ] CI workflow. Removed (was `.github/workflows/tests.yml`, GitHub Actions via game-ci) - never
+      ran green without a `UNITY_LICENSE` repository secret. Re-add once that's set up.
 - [ ] Code coverage measurement/reporting.
 - [ ] Contribution guidelines beyond the README's one-paragraph note.
