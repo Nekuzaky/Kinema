@@ -1102,12 +1102,24 @@ namespace Kinema.MotionMatching
         /// <summary>The frame one search-interval ahead in the current clip, or -1 if it runs off the end.</summary>
         private int ContinuationFrame(int currentFrame)
         {
-            MotionClipEntry clip = _database.GetClipOfFrame(currentFrame);
+            // currentFrame's own clip index, not _slotClipIndex[_activeSlot]: right after an event
+            // ends, the slot still names the event's clip (index -1, the external-clip sentinel)
+            // while currentFrame has already fallen back to the last known database frame. Reading
+            // the slot index fed -1 into MapClipTimeToFrame and indexed the clip array out of range.
+            MotionFrameInfo frameInfo = _database.GetFrame(currentFrame);
+            int clipIndex = frameInfo.ClipIndex;
+            MotionClipEntry clip = _database.GetClip(clipIndex);
             if (clip.IsLooping) return currentFrame; // looping clips can always continue.
 
-            float aheadTime = (float)_slotTime[_activeSlot] + _searchInterval * _playbackSpeed;
+            // The slot's own clock is precise (sub-frame) and is what normal play should use - but
+            // it is only meaningful while the slot is actually playing that clip. Right after an
+            // event ends the slot still reads event-clip time, so fall back to the frame's own
+            // (quantized, but correct) recorded time in that case.
+            float slotTime = (float)_slotTime[_activeSlot];
+            float aheadTime = (_slotClipIndex[_activeSlot] == clipIndex ? slotTime : frameInfo.Time)
+                + _searchInterval * _playbackSpeed;
             if (aheadTime >= clip.Length) return -1;
-            int frame = _database.MapClipTimeToFrame(_slotClipIndex[_activeSlot], aheadTime);
+            int frame = _database.MapClipTimeToFrame(clipIndex, aheadTime);
             return _playingMirrored ? _database.GetMirroredTwin(frame) : frame;
         }
 

@@ -4,6 +4,25 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.1] - 2026-07-15
+
+### Fixed
+- Crash right after any motion event ended (vault, and the new free jump - the latter is easy to
+  spam, which is how this surfaced): `IndexOutOfRangeException` in `MapClipTimeToFrame`, thrown on
+  the very next search. `PlayEvent` marks the slot with clip index -1 (external clip, not in the
+  database). On end it resumes matching immediately, but `ContinuationFrame` was still reading that
+  stale `-1` out of the slot instead of the frame actually being continued from, and indexed the
+  clip array with it. Fixed to derive both the clip and the continuation time from the frame being
+  continued, falling back to the slot's own precise clock only when the slot is confirmed to be
+  playing that same clip (normal play keeps the sub-frame precision it had).
+- `MapClipTimeToFrame` now rejects an invalid clip index with a clear `ArgumentOutOfRangeException`
+  instead of raw `IndexOutOfRangeException` - defense in depth, so a similar mistake fails at the
+  call site with a message instead of a few frames later with none.
+
+52/52 EditMode tests (2 new, pinning the guard). The crash path itself needs a live PlayableGraph
+(events, IK) to reproduce, which EditMode cannot drive - not covered by an automated regression
+test; flagged in TODO.md.
+
 ## [1.15.0] - 2026-07-15
 
 ### Added

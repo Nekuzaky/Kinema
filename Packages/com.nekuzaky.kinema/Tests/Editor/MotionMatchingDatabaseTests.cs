@@ -151,5 +151,25 @@ namespace Kinema.MotionMatching.Tests
             Assert.AreEqual(2, _db.GetMirroredTwin(0));
             Assert.AreEqual(0, _db.GetMirroredTwin(2));
         }
+
+        /// <summary>
+        /// -1 is the sentinel a controller slot carries while playing an external event clip.
+        /// A caller that reads stale slot state right after an event ends can pass it straight
+        /// through - this once reached array indexing raw and crashed with an unhelpful
+        /// IndexOutOfRangeException a few frames after the real mistake happened.
+        /// </summary>
+        [Test]
+        public void MapClipTimeToFrame_RejectsTheEventClipSentinel()
+        {
+            _db = TestDatabaseFactory.CreateSimple(out _);
+            Assert.Throws<System.ArgumentOutOfRangeException>(() => _db.MapClipTimeToFrame(-1, 0f));
+        }
+
+        [Test]
+        public void MapClipTimeToFrame_RejectsOutOfRangeClipIndex()
+        {
+            _db = TestDatabaseFactory.CreateSimple(out _);
+            Assert.Throws<System.ArgumentOutOfRangeException>(() => _db.MapClipTimeToFrame(_db.ClipCount, 0f));
+        }
     }
 }

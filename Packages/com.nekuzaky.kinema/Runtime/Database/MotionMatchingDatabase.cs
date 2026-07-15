@@ -147,6 +147,15 @@ namespace Kinema.MotionMatching
         /// </summary>
         public int MapClipTimeToFrame(int clipIndex, float clipTime)
         {
+            // -1 is the sentinel a controller slot carries while playing an external (event) clip
+            // that is not part of this database. A caller reading stale slot state after an event
+            // ends can pass it through by mistake; fail with a clear message instead of an
+            // IndexOutOfRangeException a few frames later with no context.
+            if (clipIndex < 0 || clipIndex >= _clips.Length)
+                throw new System.ArgumentOutOfRangeException(nameof(clipIndex),
+                    clipIndex, $"Not a valid clip index for this database ({_clips.Length} clips). " +
+                               "-1 usually means an external (event) clip's slot state leaked into a database lookup.");
+
             MotionClipEntry clip = _clips[clipIndex];
             if (clip.FrameCount <= 1) return clip.StartFrame;
 
