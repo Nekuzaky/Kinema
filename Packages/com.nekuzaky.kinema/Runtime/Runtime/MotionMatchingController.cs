@@ -64,6 +64,19 @@ namespace Kinema.MotionMatching
 
         [SerializeField, Range(0.1f, 2f)] private float _playbackSpeed = 1f;
 
+        [Header("Stride Warping")]
+        [Tooltip("Scale clip playback so the baked stride delivers exactly the requested speed. A database with a 1.4 m/s walk and a 4 m/s run can then hit any speed between them, and the legs cycle in sync with the travel instead of sliding.")]
+        [SerializeField] private bool _strideWarping = true;
+
+        [Tooltip("How far playback may be scaled (min, max). Beyond ~±30% the motion starts reading as slow-motion or fast-forward.")]
+        [SerializeField] private Vector2 _strideWarpRange = new Vector2(0.75f, 1.3f);
+
+        [Tooltip("Below this speed (m/s) warping is meaningless - idle and near-idle play at their authored rate.")]
+        [SerializeField, Range(0.05f, 1f)] private float _strideWarpMinSpeed = 0.25f;
+
+        [Tooltip("How quickly the warp factor follows a speed change. Higher = snappier, lower = smoother.")]
+        [SerializeField, Range(1f, 30f)] private float _strideWarpSharpness = 10f;
+
         [Header("Trajectory Prediction")]
         [SerializeField] private TrajectoryPredictionSettings _prediction = TrajectoryPredictionSettings.Default;
 
@@ -120,6 +133,9 @@ namespace Kinema.MotionMatching
 
         public int TotalSearches => _totalSearches;
         public int TotalJumps => _totalJumps;
+
+        /// <summary>Current clip-playback scale applied by stride warping (1 = authored rate).</summary>
+        public float CurrentStrideWarp => _currentStrideWarp;
         public float AverageCost => _totalSearches > 0 ? _costSum / _totalSearches : 0f;
 
         /// <summary>Clears coverage counts and cost accumulators.</summary>
@@ -221,6 +237,7 @@ namespace Kinema.MotionMatching
         private int[] _frameUsage;
         private int _totalSearches, _totalJumps;
         private float _costSum;
+        private float _currentStrideWarp = 1f;
 
         // Live state saved while previewing a snapshot, restored by StopPreview.
         private bool _previewing;
@@ -425,6 +442,7 @@ namespace Kinema.MotionMatching
             _previousPosition = transform.position;
             _history.Record(Time.time, transform.position, transform.forward);
 
+            UpdateStrideWarp(dt);
             AdvanceClocks(dt);
 
             if (_activeEvent != null)
@@ -497,9 +515,37 @@ namespace Kinema.MotionMatching
             }
         }
 
+        /// <summary>
+        /// Stride warping: the matcher can only pick speeds that exist in the data, so a database
+        /// holding a 1.4 m/s walk and a 4 m/s run can otherwise never travel at 2.5 m/s - it snaps
+        /// to one of the two and the feet slide the difference. Scaling clip playback by
+        /// requested/baked speed makes the baked stride deliver exactly the requested speed, so the
+        /// legs cycle in sync with the travel. This is what lets a handful of clips cover a
+        /// continuous speed range.
+        /// </summary>
+        private void UpdateStrideWarp(float dt)
+        {
+            float target = 1f;
+
+            if (_strideWarping && _activeEvent == null)
+            {
+                float clipSpeed = _database.GetRootVelocity(MapCurrentFrame()).magnitude;
+                Vector3 desired = _locomotion != null ? _locomotion.DesiredVelocity : _desiredVelocity;
+                float desiredSpeed = new Vector2(desired.x, desired.z).magnitude;
+
+                // Only warp when both the clip and the request carry real speed; scaling an idle
+                // clip toward a walk would just play idle fast.
+                if (clipSpeed >= _strideWarpMinSpeed && desiredSpeed >= _strideWarpMinSpeed)
+                    target = Mathf.Clamp(desiredSpeed / clipSpeed, _strideWarpRange.x, _strideWarpRange.y);
+            }
+
+            float t = 1f - Mathf.Exp(-_strideWarpSharpness * dt);
+            _currentStrideWarp = Mathf.Lerp(_currentStrideWarp, target, t);
+        }
+
         private void AdvanceClocks(float dt)
         {
-            float step = dt * _playbackSpeed;
+            float step = dt * _playbackSpeed * _currentStrideWarp;
             double before = _slotTime[_activeSlot];
             _slotTime[_activeSlot] = WrapTime(_slotClipIndex[_activeSlot], before + step);
             if (_blending)

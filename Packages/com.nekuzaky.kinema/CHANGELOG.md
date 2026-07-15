@@ -4,6 +4,28 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-07-15
+
+Movement realism release.
+
+### Added
+- Stride warping: clip playback is scaled by requested/baked root speed, so a database holding a
+  1.4 m/s walk and a 4 m/s run can travel at any speed between them with the legs cycling in sync
+  with the travel. Without it, root-motion locomotion can only move at the discrete speeds present
+  in the data and the feet slide the difference. Range-clamped, smoothed, and skipped for idle and
+  motion events. Exposed as `CurrentStrideWarp` and surfaced in the Analysis tab.
+- `GroundAdaptationIK`: clips are authored on a flat floor, so on ramps and steps the feet float or
+  sink. This probes under each foot, plants it on the real surface, tilts it to the slope, and drops
+  the pelvis so the lower foot can still reach - height and orientation only, complementing
+  `FootLockIK`'s horizontal pinning.
+- The demo character now ships with ground adaptation, the quality probe and the session recorder
+  wired in.
+
+### Note on realism
+System work has a ceiling: the procedural demo clips are sine-wave approximations. Stride warping
+and IK remove the mechanical artefacts, but human-looking motion needs mocap data. Drop real
+locomotion clips into the sample's `Character/Animations/` folder and re-run the setup.
+
 ## [1.3.0] - 2026-07-15
 
 Instrumentation and authoring release: measure the system instead of eyeballing it.

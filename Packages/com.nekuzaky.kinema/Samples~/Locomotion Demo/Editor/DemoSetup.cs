@@ -327,6 +327,9 @@ namespace Kinema.MotionMatching.Samples.Editor
 
             var controller = character.AddComponent<MotionMatchingController>();
             character.AddComponent<FootLockIK>();
+            character.AddComponent<GroundAdaptationIK>();
+            character.AddComponent<MotionQualityProbe>();
+            character.AddComponent<SessionRecorder>();
             character.AddComponent<CharacterMotor>();
             character.AddComponent<LocomotionInputProvider>();
 

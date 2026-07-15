@@ -75,6 +75,13 @@ namespace Kinema.MotionMatching.Editor
                 MotionMatchingStyles.KeyValue("Slide budget", $"{probe.SlideMetres:F2} m over {probe.GroundedSeconds:F1}s grounded");
                 MotionMatchingStyles.KeyValue("Peak slide", probe.PeakFootSlideRate.ToString("F3") + " m/s");
 
+                // Stride warp is the main lever against sliding: show what it is doing right now.
+                float warp = controller.CurrentStrideWarp;
+                MotionMatchingStyles.KeyValue("Stride warp",
+                    warp > 1.02f ? $"{warp:F2}x — stretching the stride (data slower than requested)"
+                    : warp < 0.98f ? $"{warp:F2}x — compressing the stride (data faster than requested)"
+                    : $"{warp:F2}x — authored rate");
+
                 MotionMatchingStyles.HelpRow(
                     probe.FootSlideRate < 0.05f
                         ? "Planted feet hold: under 0.05 m/s reads as real contact."
