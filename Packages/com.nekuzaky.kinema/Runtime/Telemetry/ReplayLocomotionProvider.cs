@@ -47,6 +47,10 @@ namespace Kinema.MotionMatching
         public bool RestoreStartPose { get => _restoreStartPose; set => _restoreStartPose = value; }
 
         public bool PlayOnStart { get => _playOnStart; set => _playOnStart = value; }
+
+        /// <summary>Freezes the replay clock so a timeline can scrub without the tape advancing.</summary>
+        public bool Paused { get; set; }
+
         public int FrameIndex => _index;
         public float Progress01 => _recording != null && _recording.FrameCount > 0
             ? Mathf.Clamp01((float)_index / _recording.FrameCount)
@@ -83,7 +87,7 @@ namespace Kinema.MotionMatching
 
         private void Update()
         {
-            if (!_playing || _recording == null) return;
+            if (!_playing || Paused || _recording == null) return;
 
             _index++;
             if (_index >= _recording.FrameCount)
@@ -114,6 +118,32 @@ namespace Kinema.MotionMatching
         {
             _playing = false;
             ReleaseTimestep();
+        }
+
+        /// <summary>
+        /// Jumps the replay to a recorded frame and snaps the body to that frame's captured
+        /// transform - the scrub behind a take timeline. The matcher then re-solves the pose from
+        /// there, so scrubbing shows the trajectory exactly and the animation approximately.
+        /// </summary>
+        public void ScrubTo(int frame)
+        {
+            if (_recording == null || _recording.FrameCount == 0) return;
+            _index = Mathf.Clamp(frame, 0, _recording.FrameCount - 1);
+            _playing = true;
+            Paused = true;
+
+            SessionFrame at = _recording.Frames[_index];
+            var cc = GetComponent<CharacterController>();
+            if (cc != null)
+            {
+                cc.enabled = false;
+                transform.SetPositionAndRotation(at.Position, at.Rotation);
+                cc.enabled = true;
+            }
+            else
+            {
+                transform.SetPositionAndRotation(at.Position, at.Rotation);
+            }
         }
 
         #endregion

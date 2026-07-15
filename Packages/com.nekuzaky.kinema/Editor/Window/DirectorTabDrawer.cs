@@ -27,6 +27,7 @@ namespace Kinema.MotionMatching.Editor
         private string _saveMessage;
         private bool _loopGhosts = true;
         private SessionRecording _lastRecording;
+        private GameObject _swapRig;
         private static readonly Color GhostTint = new Color(0.2f, 0.9f, 1f, 1f);
 
         #endregion
@@ -43,12 +44,41 @@ namespace Kinema.MotionMatching.Editor
             if (!Application.isPlaying || !controller.IsInitialized)
             {
                 MotionMatchingStyles.HelpRow("Enter Play mode. The Director plays any database clip on the live character, records takes, and sends ghosts out to redo your trajectory.", MessageType.Info);
+                DrawRigSwap(controller);
                 return;
             }
 
             DrawPlayback(controller);
+            DrawTags(controller);
             DrawRecording(controller);
+            DrawTakeTimeline(controller);
             DrawGhosts(controller);
+        }
+
+        #endregion
+
+        #region Tools and Utilities — Character
+
+        private void DrawRigSwap(MotionMatchingController controller)
+        {
+            using (MotionMatchingStyles.BeginSection("Character — swap rig"))
+            {
+                MotionMatchingStyles.HelpRow(
+                    "Replace the character's body in one click. Components, settings and database move over; " +
+                    "Humanoid retargeting maps the data onto the new proportions.", MessageType.None);
+
+                _swapRig = (GameObject)EditorGUILayout.ObjectField("New rig", _swapRig, typeof(GameObject), false);
+
+                bool ready = RigSwapUtility.CanSwap(controller, _swapRig, out string reason);
+                using (new EditorGUI.DisabledScope(!ready))
+                {
+                    if (GUILayout.Button("Swap Rig") &&
+                        RigSwapUtility.Swap(controller, _swapRig) != null)
+                        _swapRig = null;
+                }
+                if (!ready && _swapRig != null)
+                    MotionMatchingStyles.HelpRow(reason, MessageType.Warning);
+            }
         }
 
         #endregion
@@ -164,6 +194,135 @@ namespace Kinema.MotionMatching.Editor
 
             var head = new Rect(rect.x + rect.width * Mathf.Clamp01(playhead01) - 1f, rect.y, 2f, rect.height);
             EditorGUI.DrawRect(head, MotionMatchingStyles.Accent);
+        }
+
+        #endregion
+
+        #region Tools and Utilities — Tags
+
+        /// <summary>Stance filter, formerly only in the in-game overlay: the window owns it now.</summary>
+        private static void DrawTags(MotionMatchingController controller)
+        {
+            MotionMatchingDatabase db = controller.Database;
+            if (!db.HasTags) return;
+
+            using (MotionMatchingStyles.BeginSection("Tags — require / exclude"))
+            {
+                string[] names = db.TagNames;
+                for (int i = 0; i < names.Length; i++)
+                {
+                    ulong mask = 1ul << i;
+                    bool required = (controller.RequiredTags & mask) != 0;
+                    bool excluded = (controller.ExcludedTags & mask) != 0;
+
+                    using (new EditorGUILayout.HorizontalScope())
+                    {
+                        GUILayout.Label(names[i], MotionMatchingStyles.ValueLabel, GUILayout.Width(150));
+                        bool nowRequired = GUILayout.Toggle(required, "require", EditorStyles.miniButtonLeft, GUILayout.Width(60));
+                        bool nowExcluded = GUILayout.Toggle(excluded, "exclude", EditorStyles.miniButtonRight, GUILayout.Width(60));
+
+                        // Requiring and excluding the same tag would make every frame ineligible.
+                        if (nowRequired != required)
+                        {
+                            controller.RequiredTags = nowRequired ? controller.RequiredTags | mask : controller.RequiredTags & ~mask;
+                            if (nowRequired) controller.ExcludedTags &= ~mask;
+                        }
+                        else if (nowExcluded != excluded)
+                        {
+                            controller.ExcludedTags = nowExcluded ? controller.ExcludedTags | mask : controller.ExcludedTags & ~mask;
+                            if (nowExcluded) controller.RequiredTags &= ~mask;
+                        }
+                    }
+                }
+            }
+        }
+
+        #endregion
+
+        #region Tools and Utilities — Take timeline
+
+        /// <summary>
+        /// Timeline over the recorded take: the speed curve is the "filmstrip", the playhead scrubs
+        /// the newest ghost along the recorded trajectory. Scrubbing snaps the ghost's root to the
+        /// recorded transform; its matcher then re-solves the pose from there, so the trajectory is
+        /// exact and the animation approximate.
+        /// </summary>
+        private void DrawTakeTimeline(MotionMatchingController controller)
+        {
+            ReplayLocomotionProvider ghost = NewestGhost(controller);
+            // Takes recorded with the in-game hotkeys never pass through this tab, but their ghosts
+            // carry the recording - read it off the newest one.
+            SessionRecording take = _lastRecording != null && _lastRecording.IsValid ? _lastRecording
+                : ghost != null ? ghost.Recording : null;
+            if (take == null || !take.IsValid) return;
+
+            using (MotionMatchingStyles.BeginSection($"Take — {take.Duration:F1}s / {take.FrameCount} frames / {take.DistanceTravelled():F1} m"))
+            {
+
+                // Speed curve with the playhead over it.
+                Rect rect = GUILayoutUtility.GetRect(120, 44, GUILayout.ExpandWidth(true));
+                EditorGUI.DrawRect(rect, new Color(0f, 0f, 0f, 0.35f));
+                DrawSpeedCurve(rect, take);
+
+                float progress = ghost != null ? ghost.Progress01 : 0f;
+                EditorGUI.DrawRect(new Rect(rect.x + rect.width * progress - 1f, rect.y, 2f, rect.height), MotionMatchingStyles.Accent);
+
+                Event e = Event.current;
+                if (ghost != null && (e.type == EventType.MouseDown || e.type == EventType.MouseDrag) && rect.Contains(e.mousePosition))
+                {
+                    float t = Mathf.Clamp01((e.mousePosition.x - rect.x) / rect.width);
+                    ghost.ScrubTo(Mathf.RoundToInt(t * (take.FrameCount - 1)));
+                    e.Use();
+                }
+
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    using (new EditorGUI.DisabledScope(ghost == null))
+                    {
+                        if (GUILayout.Button("|<", GUILayout.Width(32))) ghost.ScrubTo(0);
+                        if (GUILayout.Button(ghost != null && ghost.Paused ? "▶" : "||", GUILayout.Width(32)))
+                            ghost.Paused = !(ghost != null && ghost.Paused);
+                        if (GUILayout.Button("<", GUILayout.Width(28))) ghost.ScrubTo(ghost.FrameIndex - 1);
+                        if (GUILayout.Button(">", GUILayout.Width(28))) ghost.ScrubTo(ghost.FrameIndex + 1);
+                    }
+                    GUILayout.FlexibleSpace();
+                    GUILayout.Label(ghost != null ? $"frame {ghost.FrameIndex}" : "spawn a ghost to scrub the take",
+                        MotionMatchingStyles.KeyLabel);
+                }
+            }
+        }
+
+        /// <summary>Horizontal speed per frame, drawn as filled bars - the take's visual fingerprint.</summary>
+        private static void DrawSpeedCurve(Rect rect, SessionRecording recording)
+        {
+            SessionFrame[] frames = recording.Frames;
+            int columns = Mathf.Min(frames.Length, Mathf.Max(1, (int)(rect.width / 2f)));
+            float max = 0.1f;
+            for (int i = 0; i < frames.Length; i++)
+            {
+                Vector3 v = frames[i].DesiredVelocity;
+                max = Mathf.Max(max, new Vector2(v.x, v.z).magnitude);
+            }
+
+            float columnWidth = rect.width / columns;
+            for (int c = 0; c < columns; c++)
+            {
+                int f = (int)((long)c * frames.Length / columns);
+                Vector3 v = frames[f].DesiredVelocity;
+                float h = Mathf.Clamp01(new Vector2(v.x, v.z).magnitude / max) * (rect.height - 4f);
+                if (h < 1f) continue;
+                EditorGUI.DrawRect(new Rect(rect.x + c * columnWidth, rect.yMax - h - 2f, Mathf.Max(1f, columnWidth - 1f), h),
+                    MotionMatchingStyles.Accent * new Color(1f, 1f, 1f, 0.55f));
+            }
+        }
+
+        private static ReplayLocomotionProvider NewestGhost(MotionMatchingController controller)
+        {
+            ReplayLocomotionProvider newest = null;
+            foreach (ReplayLocomotionProvider replay in UnityEngine.Object.FindObjectsByType<ReplayLocomotionProvider>(FindObjectsSortMode.None))
+                if (replay.gameObject != controller.gameObject)
+                    newest = replay;
+            return newest;
         }
 
         #endregion

@@ -23,7 +23,7 @@ namespace Kinema.MotionMatching.Samples
         [Tooltip("Toggles the browser overlay.")]
         [SerializeField] private Key _toggleKey = Key.Tab;
 
-        [SerializeField] private bool _visibleOnStart = true;
+        [SerializeField] private bool _visibleOnStart;  // hidden by default: the game view stays clean, Tab/Start opens it
 
         [Tooltip("Width of the clip list panel, in pixels.")]
         [SerializeField, Range(220f, 520f)] private float _panelWidth = 320f;

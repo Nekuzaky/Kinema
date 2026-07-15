@@ -4,6 +4,27 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] - 2026-07-15
+
+Clean-game-view release: everything the in-game overlay did now lives in the window.
+
+### Added
+- Director > Tags: the require/exclude stance filter moved into the window.
+- Director > Take timeline: CapCut-style navigation over a recorded take. The speed curve is the
+  filmstrip, the playhead scrubs the newest ghost along the recorded trajectory (transport buttons
+  and frame stepping included). Scrubbing snaps the ghost's root to the recorded transform; its
+  matcher re-solves the pose from there, so the trajectory is exact and the animation approximate.
+  Takes recorded with the in-game hotkeys appear too - the timeline reads them off the ghost.
+- Director > Character: swap the character's rig in one click (edit mode). Components, settings and
+  database references move to the new body via the component clipboard, the controller's Animator is
+  re-pointed, and anything following the old transform (camera, AI targets) is retargeted. Humanoid
+  retargeting maps the data onto the new proportions.
+- `ReplayLocomotionProvider.Paused` / `ScrubTo(frame)`: the runtime side of the take timeline.
+
+### Changed
+- The in-game browser overlay is hidden by default: the game view starts clean; Tab or gamepad
+  Start opens it. Regenerate the demo scene (or untick Visible On Start) for existing scenes.
+
 ## [1.9.0] - 2026-07-15
 
 Director release: the record/ghost/playback controls move into the editor window, and the demo
