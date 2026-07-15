@@ -4,6 +4,26 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.19.0] - 2026-07-16
+
+### Added
+- Auto-tag apply: "Detect and apply gait tags" button in the Tags tab writes `GaitClassifier`
+  suggestions into the config as real `ClipTagTrack` ranges via `AutoTagApplier` - same
+  SerializedObject path as hand-authoring (undo works), tag names created in the vocabulary as
+  needed, re-applying replaces the touched clips' ranges instead of stacking, hand-authored tracks
+  on untouched clips are preserved. Rebake afterwards to bake the tags into the database. Unit
+  tested (5 tests, read back through the config's public API and `MaskAt`).
+- In-player search benchmark: the standalone smoke test now runs the editor benchmark's clustered
+  synthetic measurement (5k frames x 44 dims) inside the built player and logs a
+  `[KinemaSmoke] BENCH` line. Measured locally: mean 44.6 us / p99 86.1 us in the player vs
+  87.4 / 138.3 us in-editor - build is ~2x faster, editor numbers are a conservative bound.
+
+### Fixed
+- Smoke-test build script left its temp scene in Assets: `EditorApplication.Exit` terminates the
+  process before `finally` runs; the scene is now deleted before exiting.
+
+100/100 EditMode tests (5 new), 9/9 PlayMode tests.
+
 ## [1.18.0] - 2026-07-15
 
 ### Added

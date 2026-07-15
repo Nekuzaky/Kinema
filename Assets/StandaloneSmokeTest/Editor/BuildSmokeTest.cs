@@ -57,16 +57,16 @@ namespace Kinema.MotionMatching.SmokeTest.Editor
                 Debug.Log($"[KinemaSmokeBuild] {(ok ? "PASS" : "FAIL")} - result {report.summary.result}, " +
                           $"errors {report.summary.totalErrors}, size {report.summary.totalSize / (1024 * 1024)} MB, " +
                           $"time {report.summary.totalTime.TotalSeconds:F0}s");
+                // Delete BEFORE Exit: EditorApplication.Exit terminates the process immediately, so
+                // a finally block never runs (learned by finding the temp scene left in Assets).
+                AssetDatabase.DeleteAsset(TempScenePath);
                 EditorApplication.Exit(ok ? 0 : 1);
             }
             catch (Exception e)
             {
                 Debug.Log($"[KinemaSmokeBuild] FAIL - {e.Message}");
-                EditorApplication.Exit(1);
-            }
-            finally
-            {
                 AssetDatabase.DeleteAsset(TempScenePath);
+                EditorApplication.Exit(1);
             }
         }
 

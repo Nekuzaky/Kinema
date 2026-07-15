@@ -37,8 +37,12 @@ left, roughly in priority order within each section.
       threads. Trade-off: a batched jump lands one graph evaluation later than the synchronous path
       (documented on `MotionMatchingController.SearchScheduler`). PlayMode-tested: routing,
       soundness under ticking, clean synchronous fallback when the batch is disabled.
-- [ ] Not yet profiled: standalone-build numbers (everything measured so far is in-editor with Burst
-      forced synchronous).
+- [x] **Standalone-build numbers measured** - the smoke-test player now runs the same clustered
+      synthetic benchmark as the editor's Benchmark Search (5k frames x 44 dims, plausible queries,
+      warmup absorbing the Burst compile) and logs one `[KinemaSmoke] BENCH` line. Measured locally:
+      mean 44.6 us / median 44.7 us / p99 86.1 us in the player, vs 87.4 / 85.5 / 138.3 us in-editor
+      for the same configuration - the build is roughly twice as fast as editor measurements, so
+      editor numbers are a safe conservative bound.
 - [x] **Animation LOD** - `MotionMatchingLOD` degrades `MotionMatchingController.SearchInterval`
       with distance from camera (piecewise-linear multiplier over configurable distance tiers,
       recomputed at a throttled rate, not per frame). The distance-to-multiplier math is unit
@@ -119,8 +123,10 @@ left, roughly in priority order within each section.
       returns consolidated per-clip ranges. `Tools > Kinema > Log Auto-Tag Suggestions`
       (headless-runnable) logs the proposals for the richest baked database - verified on the baked
       Opsive set: detected `Walk+Turn` spans line up with the `...TurnLeft180`-style clip names it
-      never reads. Suggestions only: nothing writes to a config. Follow-up if wanted: an "apply"
-      button in the Tags tab that turns accepted suggestions into `ClipTagTrack` ranges.
+      never reads. **Apply path done too**: "Detect and apply gait tags" in the Tags tab writes the
+      ranges into the config via `AutoTagApplier` (same SerializedObject path as hand-authoring, so
+      undo works; re-applying replaces instead of stacking; unit tested). Rebake afterwards to get
+      the tags into the database.
 - [ ] Learned Motion Matching (Ubisoft La Forge): decompressor / stepper / projector networks
       replacing the database at runtime for large memory savings. The normalized, well-typed data
       model should make training-data export straightforward when this is picked up.

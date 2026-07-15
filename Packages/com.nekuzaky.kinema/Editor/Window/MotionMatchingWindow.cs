@@ -410,6 +410,39 @@ namespace Kinema.MotionMatching.Editor
             so.Update();
             _tagDrawer.Draw(_config, so);
             so.ApplyModifiedProperties();
+
+            DrawAutoTagFromMotion();
+        }
+
+        /// <summary>
+        /// Accept-suggestions path for motion-based auto-tagging: classifies the assigned baked
+        /// database with <see cref="GaitClassifier"/> and writes the resulting Idle/Walk/Run/Turn
+        /// ranges into the config through <see cref="AutoTagApplier"/> (replacing previous ranges on
+        /// the touched clips). Preview the proposals first via
+        /// Tools > Kinema > Log Auto-Tag Suggestions.
+        /// </summary>
+        private void DrawAutoTagFromMotion()
+        {
+            using (MotionMatchingStyles.BeginSection("Auto-tag from motion"))
+            {
+                bool ready = _database != null && _database.IsValid;
+                if (!ready)
+                {
+                    MotionMatchingStyles.HelpRow("Assign a baked database (Overview tab) to classify motion.", MessageType.Info);
+                    return;
+                }
+
+                MotionMatchingStyles.HelpRow(
+                    "Detects idle/walk/run/turn ranges from the baked root velocity and writes them as tag ranges. " +
+                    "Replaces existing ranges on the clips it touches.", MessageType.None);
+                if (GUILayout.Button("Detect and apply gait tags", GUILayout.Height(24)))
+                {
+                    Undo.RecordObject(_config, "Auto-tag from motion");
+                    var ranges = GaitClassifier.Classify(_database, GaitClassifier.Settings.Default);
+                    int written = AutoTagApplier.Apply(_config, _database, ranges);
+                    Debug.Log($"[Kinema] Auto-tag: wrote {written} tag ranges into '{_config.name}'. Rebake to bake them into the database.");
+                }
+            }
         }
 
         #endregion

@@ -86,9 +86,106 @@ namespace Kinema.MotionMatching.SmokeTest
 
             if (++_framesTicked >= FramesToRun)
             {
+                BenchmarkSearch();
                 Debug.Log($"[KinemaSmoke] PASS - {_framesTicked} frames ticked, final frame {frame}, clip {_controller.CurrentClipIndex}");
                 Quit(0);
             }
+        }
+
+        /// <summary>
+        /// In-player search benchmark (TODO.md: standalone-build numbers were never measured -
+        /// everything so far ran in-editor with Burst forced synchronous). Same shape as the editor's
+        /// Benchmark Search: plausible queries (real rows plus noise), warmup absorbing the Burst
+        /// compile, then mean/median/p99 over 2000 samples on a 44-dim clustered synthetic set,
+        /// logged as one greppable line.
+        /// </summary>
+        private void BenchmarkSearch()
+        {
+            const int Frames = 5000;
+            const int Warmup = 200;
+            const int Samples = 2000;
+
+            MotionMatchingDatabase db = CreateSyntheticBenchmarkDatabase(Frames);
+            try
+            {
+                using var matcher = new MotionMatcher(db, FeatureWeights.Default);
+                var query = new MotionMatchingQuery(db.Schema);
+                var random = new System.Random(12345);
+
+                void NextQuery()
+                {
+                    int row = random.Next(db.FrameCount) * db.Dimension;
+                    float[] features = db.Features;
+                    for (int i = 0; i < db.Dimension; i++)
+                        query.Values[i] = features[row + i] + (float)(random.NextDouble() - 0.5) * 0.2f;
+                }
+
+                for (int i = 0; i < Warmup; i++) { NextQuery(); matcher.Search(query); }
+
+                var timings = new double[Samples];
+                var watch = new System.Diagnostics.Stopwatch();
+                for (int i = 0; i < Samples; i++)
+                {
+                    NextQuery();
+                    watch.Restart();
+                    matcher.Search(query);
+                    watch.Stop();
+                    timings[i] = watch.Elapsed.TotalMilliseconds;
+                }
+
+                System.Array.Sort(timings);
+                double mean = 0d;
+                for (int i = 0; i < Samples; i++) mean += timings[i];
+                mean /= Samples;
+
+                Debug.Log($"[KinemaSmoke] BENCH standalone, synthetic {Frames:N0} frames x 44 dims: " +
+                          $"mean {mean * 1000d:F1} us | median {timings[Samples / 2] * 1000d:F1} us | " +
+                          $"p99 {timings[(int)(Samples * 0.99)] * 1000d:F1} us");
+            }
+            finally
+            {
+                Destroy(db);
+            }
+        }
+
+        /// <summary>Clustered synthetic set, same construction as the editor benchmark's - clusters
+        /// matter because the search's early-out exploits local similarity.</summary>
+        private static MotionMatchingDatabase CreateSyntheticBenchmarkDatabase(int frameCount)
+        {
+            var schema = new FeatureSchema
+            {
+                TrajectoryTimes = new[] { -0.2f, 0.2f, 0.4f, 0.6f },
+                BoneNames = new[] { "Bone0", "Bone1", "Bone2" },
+                BoneWeights = new[] { 1f, 1f, 1f }
+            };
+            int dim = schema.Dimension;
+            var random = new System.Random(4242);
+            var features = new float[frameCount * dim];
+
+            const int ClusterCount = 64;
+            var centres = new float[ClusterCount * dim];
+            for (int i = 0; i < centres.Length; i++) centres[i] = (float)(random.NextDouble() * 4d - 2d);
+            for (int f = 0; f < frameCount; f++)
+            {
+                int cluster = (f * ClusterCount / frameCount) % ClusterCount;
+                for (int i = 0; i < dim; i++)
+                    features[f * dim + i] = centres[cluster * dim + i] + (float)(random.NextDouble() - 0.5) * 0.3f;
+            }
+
+            var mean = new float[dim];
+            var std = new float[dim];
+            for (int i = 0; i < dim; i++) std[i] = 1f;
+            var frames = new MotionFrameInfo[frameCount];
+            for (int f = 0; f < frameCount; f++) frames[f] = new MotionFrameInfo(0, f / 30f);
+            var clips = new[]
+            {
+                new MotionClipEntry { Name = "Synthetic", StartFrame = 0, FrameCount = frameCount, Length = frameCount / 30f, IsLooping = true }
+            };
+
+            var db = ScriptableObject.CreateInstance<MotionMatchingDatabase>();
+            db.SetBakedData(schema, features, mean, std, frames, clips, FeatureWeights.Default,
+                bakeFrameRate: 30, bakeDateUtc: "smoke-bench", totalDuration: frameCount / 30f);
+            return db;
         }
 
         private void Fail(string reason)
