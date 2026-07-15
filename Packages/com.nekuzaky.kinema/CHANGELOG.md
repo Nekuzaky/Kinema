@@ -4,6 +4,19 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1] - 2026-07-15
+
+### Fixed
+- Every small label in the window rendered as nothing: stat cards showed a number with no caption,
+  clip bars had no names, subsystem rows were bare dots, and Summary collapsed to an empty box. The
+  key/value styles were built from `EditorStyles.label` with `fontSize` forced down, which leaves the
+  style without a font at that size - the text then measures and draws as nothing, which is why rows
+  collapsed while the bars and numbers beside them kept rendering. They now derive from
+  `EditorStyles.miniLabel`, which is already small, and are rebuilt when the editor skin changes.
+- The window opened on whichever database the project returned first - typically the small starter
+  set (187 frames) rather than the real one (4,705). It now opens on the richest baked database and
+  pairs the matching config with it.
+
 ## [1.7.0] - 2026-07-15
 
 Recording release, plus one tool instead of three.

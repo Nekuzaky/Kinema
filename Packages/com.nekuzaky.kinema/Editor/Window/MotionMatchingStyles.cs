@@ -26,6 +26,7 @@ namespace Kinema.MotionMatching.Editor
         #region Private and Protected
 
         private static bool _init;
+        private static bool _proSkin;
         private static GUIStyle _title;
         private static GUIStyle _sectionTitle;
         private static GUIStyle _keyLabel;
@@ -154,13 +155,23 @@ namespace Kinema.MotionMatching.Editor
 
         private static void Ensure()
         {
-            if (_init) return;
+            // Styles cache font and colour from the active skin, so a theme switch has to rebuild them.
+            if (_init && _proSkin == EditorGUIUtility.isProSkin) return;
             _init = true;
+            _proSkin = EditorGUIUtility.isProSkin;
 
             _title = new GUIStyle(EditorStyles.boldLabel) { fontSize = 15, margin = new RectOffset(4, 4, 6, 6) };
             _sectionTitle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 12 };
-            _keyLabel = new GUIStyle(EditorStyles.label) { normal = { textColor = Muted }, fontSize = 11 };
-            _valueLabel = new GUIStyle(EditorStyles.label) { fontSize = 11 };
+
+            // Derived from miniLabel, which is already small, rather than label with fontSize forced
+            // down. Shrinking a label style that way leaves it without a font at the requested size:
+            // the text then measures and draws as nothing, so rows collapse and labels vanish while
+            // the bars and numbers around them keep rendering.
+            _keyLabel = new GUIStyle(EditorStyles.miniLabel) { normal = { textColor = Muted } };
+            _valueLabel = new GUIStyle(EditorStyles.miniLabel)
+            {
+                normal = { textColor = EditorStyles.label.normal.textColor }
+            };
             _cardBox = new GUIStyle(EditorStyles.helpBox)
             {
                 padding = new RectOffset(10, 10, 8, 8),

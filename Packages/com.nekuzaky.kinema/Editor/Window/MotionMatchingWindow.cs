@@ -718,10 +718,40 @@ namespace Kinema.MotionMatching.Editor
             return _configSerialized;
         }
 
+        /// <summary>
+        /// Opens on the richest baked database rather than whichever asset the project happened to
+        /// return first. A project usually holds a throwaway starter set next to the real one, and
+        /// landing on the small one reads as the tool being broken.
+        /// </summary>
         private void AutoAssign()
         {
-            if (_config == null) _config = FindFirstAsset<MotionMatchingConfig>();
-            if (_database == null) _database = FindFirstAsset<MotionMatchingDatabase>();
+            if (_database == null) _database = FindRichestDatabase();
+            if (_config == null) _config = FindConfigFor(_database) ?? FindFirstAsset<MotionMatchingConfig>();
+        }
+
+        private static MotionMatchingDatabase FindRichestDatabase()
+        {
+            MotionMatchingDatabase best = null;
+            foreach (string guid in AssetDatabase.FindAssets("t:" + nameof(MotionMatchingDatabase)))
+            {
+                var candidate = AssetDatabase.LoadAssetAtPath<MotionMatchingDatabase>(AssetDatabase.GUIDToAssetPath(guid));
+                if (candidate == null || !candidate.IsValid) continue;
+                if (best == null || candidate.FrameCount > best.FrameCount) best = candidate;
+            }
+            return best;
+        }
+
+        /// <summary>The baker names a database after its config, which is what pairs them back up.</summary>
+        private static MotionMatchingConfig FindConfigFor(MotionMatchingDatabase database)
+        {
+            if (database == null) return null;
+
+            string databasePath = AssetDatabase.GetAssetPath(database);
+            const string suffix = "Database.asset";
+            if (string.IsNullOrEmpty(databasePath) || !databasePath.EndsWith(suffix)) return null;
+
+            string configPath = databasePath.Substring(0, databasePath.Length - suffix.Length) + ".asset";
+            return AssetDatabase.LoadAssetAtPath<MotionMatchingConfig>(configPath);
         }
 
         private void RefreshController()
