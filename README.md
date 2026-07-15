@@ -17,6 +17,18 @@ also a Unity project you can open to try the demo directly.
 
 Kinema is free and open source. If it saves you time on your project, consider [becoming a sponsor](https://github.com/sponsors/Nekuzaky) - it directly funds continued development, bug fixes, and new features. See [FUNDING.yml](.github/FUNDING.yml) for all supported ways to contribute.
 
+## Table of contents
+
+- [Features](#features)
+- [Installation](#installation)
+- [Quick start](#quick-start)
+- [How it works](#how-it-works)
+- [Repository layout](#repository-layout)
+- [Testing](#testing)
+- [Demo assets](#demo-assets)
+- [Contact](#contact)
+- [License](#license)
+
 ## Features
 
 **Matching core**
@@ -111,6 +123,10 @@ The demo character is provided by [Adobe Mixamo](https://www.mixamo.com/) and re
 Adobe's Mixamo license. It is included only to make the demo runnable and is not covered by this
 project's license. A richer demo path exists for the (separately licensed, not redistributed) Opsive
 OmniAnimation mocap pack - see [the documentation](Packages/com.nekuzaky.kinema/Documentation~/index.md).
+
+## Contact
+
+Found a bug, have a question, or just want to get in touch? Reach out via [nekuzaky.com/contact](https://nekuzaky.com/contact).
 
 ## License
 
