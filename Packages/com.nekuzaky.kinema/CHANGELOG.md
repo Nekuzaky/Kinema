@@ -4,6 +4,21 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.1] - 2026-07-15
+
+### Fixed
+- Pose flicker while moving (v1.13 regression, reported on video). Two causes, both mine:
+  - The live pose query sampled the skeleton at the start of Update - AFTER the previous frame's
+    foot lock and ground adaptation IK had moved the feet. IK-displaced feet resemble no baked
+    frame, so every search found something "better", jumped, blended into an even stranger pose,
+    and jumped again: a feedback loop. The pose is now sampled straight after the graph evaluates,
+    before the LateUpdate IK passes touch it.
+  - Deviation-triggered searches had no floor: a sustained turn deviates continuously, so the
+    search fired every frame and each search was a chance to jump. A cooldown (default 60 ms) now
+    bounds the rate; the timer-based interval is unchanged.
+- Both features remain serialized toggles on the controller (Live Pose Query, Search On Deviation)
+  and can be disabled outright if needed.
+
 ## [1.14.0] - 2026-07-15
 
 ### Added

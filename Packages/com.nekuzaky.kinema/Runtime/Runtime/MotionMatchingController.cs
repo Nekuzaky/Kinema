@@ -91,6 +91,9 @@ namespace Kinema.MotionMatching
         [Tooltip("Average future-point deviation (meters) that triggers an immediate search.")]
         [SerializeField, Range(0.05f, 1f)] private float _deviationThreshold = 0.2f;
 
+        [Tooltip("Shortest gap between deviation-triggered searches (seconds). Without it a sustained turn fires a search every frame, and every search is a chance to jump - the pose flickers.")]
+        [SerializeField, Range(0.02f, 0.2f)] private float _deviationCooldown = 0.06f;
+
         [Header("Events")]
         [Tooltip("Relay AnimationEvents of the active clip via SendMessage, matching Mecanim semantics.")]
         [SerializeField] private bool _relayAnimationEvents = true;
@@ -300,6 +303,7 @@ namespace Kinema.MotionMatching
 
         // Future points the last search answered, for deviation-triggered searching.
         private Vector2[] _lastSearchedTrajectory;
+        private float _timeSinceSearch;
         private Vector3[] _candidateBones;
 
         #endregion
@@ -482,8 +486,6 @@ namespace Kinema.MotionMatching
             _previousPosition = transform.position;
             _history.Record(Time.time, transform.position, transform.forward);
 
-            // Sample the skeleton as rendered last frame (IK included) for the live pose query.
-            if (_livePoseQuery && _queryBonesValid && dt > 0f) SampleQueryBones(dt);
 
             UpdateStrideWarp(dt);
             AdvanceClocks(dt);
@@ -502,14 +504,19 @@ namespace Kinema.MotionMatching
                 // is the expensive part and stays gated.
                 PredictDesiredTrajectory();
 
-                // A turn should be answered the frame it happens, not up to a full interval later.
-                if (_searchOnDeviation && TrajectoryDeviation() > _deviationThreshold)
+                // A turn should be answered the frame it happens, not up to a full interval later -
+                // but never faster than the cooldown: a sustained turn deviates continuously, and
+                // searching every frame turns each search into a chance to flicker.
+                _timeSinceSearch += dt;
+                if (_searchOnDeviation && _timeSinceSearch >= _deviationCooldown &&
+                    TrajectoryDeviation() > _deviationThreshold)
                     _searchTimer = 0f;
 
                 _searchTimer -= dt;
                 if (_searchTimer <= 0f)
                 {
                     _searchTimer += _searchInterval;
+                    _timeSinceSearch = 0f;
                     RunSearch();
                 }
             }
@@ -518,6 +525,12 @@ namespace Kinema.MotionMatching
             UpdateOverlay(dt);
             ApplySlotTimes();
             _graph.Evaluate(dt);
+
+            // Sample the pose here - straight out of the graph, BEFORE the LateUpdate IK passes
+            // touch it. Sampling after IK poisoned the query: feet moved by foot lock and ground
+            // adaptation resemble no baked frame, so every search found something "better" and the
+            // pose flickered in a feedback loop (jump -> blend -> stranger pose -> jump).
+            if (_livePoseQuery && _queryBonesValid && dt > 0f) SampleQueryBones(dt);
         }
 
         /// <summary>Warps the root toward the event target until contact, then ends the event at clip end.</summary>
