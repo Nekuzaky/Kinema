@@ -7,23 +7,26 @@ left, roughly in priority order within each section.
 
 ## Data
 
-- [ ] **Replace procedural demo animations with real mocap.** The bundled locomotion and vault
-      clips are code-generated placeholders (correct cadence and root motion, approximate limb
-      detail). Drop 5+ real clips into `Character/Animations/` and re-run the demo setup to
-      upgrade instantly - the pipeline doesn't change, only the input quality does.
+- [x] **Real mocap demo path** - `Tools > Kinema > Demo Scene` bakes an installed Opsive
+      OmniAnimation pack (74 clips) when present, auto-tagged and retargeted onto the demo's
+      Humanoid rig; falls back to the procedural clips only when no pack and no dropped-in FBX
+      clips are available.
 - [ ] **Validate mirroring visually.** Baked and wired (trajectory/root X-flip, Left/Right bone
       swap, runtime mirror pose job) but never checked on screen. Keep `Generate Mirrored
       Variants` off until it has been playtested on a real rig.
+- [ ] **Validate the v1.13-1.15 matching changes visually.** Live pose query, foot-phase cost,
+      spring prediction, deviation search and idle pruning are compile/headless-verified and unit
+      tested, but runtime feel (does it read as more or less real) has not been judged on screen.
 
 ## Performance
 
-- [ ] **Stress-test at scale.** No database with tens of thousands of frames has been run; the
-      Burst job and the optional KD-tree are dimensioned in theory (chunked parallel scan,
-      weight-scaled tree), not measured. Profile a large multi-character-worth of clips before
-      relying on either for a shipping budget.
-- [ ] **KD-tree is weak above ~15-20 effective dimensions** (a typical feature vector is 40+).
-      Useful only for very large databases with no tag filtering; confirm it actually beats
-      BurstLinear on your data before enabling it.
+- [x] **Stress-tested at scale** - `Tools > Kinema > Benchmark Search` measures the real Burst
+      search against the baked database and synthetic clustered sets up to 400k frames; see the
+      README/changelog for numbers. Confirmed: BurstLinear wins below ~25k frames (where the demo
+      and most projects sit), the KD-tree only earns its keep past ~100k.
+- [ ] Not yet profiled: many characters searching concurrently in one frame (the benchmark times
+      one matcher in isolation), and standalone-build numbers (everything measured so far is
+      in-editor with Burst forced synchronous).
 - [ ] Animation LOD: degrade search cadence with camera distance for crowds of matched
       characters. Not implemented.
 
@@ -53,8 +56,12 @@ left, roughly in priority order within each section.
 ## Feature scope not started
 
 - [ ] Blend space integration (MxM-style: blend spaces as matchable data).
-- [ ] Retargeting through Humanoid so one database serves multiple skeletons.
-- [ ] Auto-tagging utilities (speed/turn/idle detection painting tag ranges automatically).
+- [x] Retargeting through Humanoid so one database serves multiple skeletons - the ghost-on-a-
+      different-rig path and the Director's one-click rig swap both do this (copy settings, keep
+      the database, retarget onto the new body).
+- [x] Auto-tagging from clip naming conventions (Opsive pack setup: 74 clips sorted into 12 tags
+      from their file names, no ranges painted by hand). Speed/turn/idle detection from motion
+      itself, rather than naming convention, is still not implemented.
 - [ ] Learned Motion Matching (Ubisoft La Forge): decompressor / stepper / projector networks
       replacing the database at runtime for large memory savings. The normalized, well-typed data
       model should make training-data export straightforward when this is picked up.
@@ -62,7 +69,7 @@ left, roughly in priority order within each section.
 
 ## Process
 
-- [x] EditMode automated tests (33 tests, `Tests/Editor`) - **done**.
+- [x] EditMode automated tests (50 tests, `Tests/Editor`) - **done**.
 - [x] CI workflow (`.github/workflows/tests.yml`, GitHub Actions via game-ci) - **configured**,
       needs a `UNITY_LICENSE` repository secret added by the repo owner to actually run green.
 - [ ] Code coverage measurement/reporting.

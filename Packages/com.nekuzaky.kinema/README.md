@@ -3,9 +3,9 @@
 `com.nekuzaky.kinema`
 
 Data-driven motion matching locomotion for Unity: an offline bake pipeline, a normalized feature
-database, a configurable weighted scorer, a `PlayableGraph` runtime, and an integrated editor tool
-with live debug. Small and readable, structured to grow toward mirroring, tags, contacts and cost
-breakdowns.
+database (pose, trajectory, gait phase), a Burst-compiled weighted search, a `PlayableGraph`
+runtime, and an integrated editor window with live debug, in-window recording/ghost replay, a
+one-click rig swap, and a search-performance benchmark.
 
 ## Requirements
 
@@ -28,19 +28,22 @@ Or add to `Packages/manifest.json`:
 
 ## Quick start
 
-1. Open the tool: `Kinema > Motion Matching > Window` (Ctrl+Shift+M).
+1. Open the tool: `Tools > Kinema > Motion Matching Window` (Ctrl+Shift+M).
 2. Create a config (Overview tab) and assign a Humanoid or Generic rig plus locomotion clips.
 3. Bake the database (Bake tab).
 4. Add a `MotionMatchingController` to your character, assign the database, and drive it with an
    `ILocomotionProvider` (the sample ships one).
 
-See the "Locomotion Demo" sample for a fully wired scene and a one-click setup.
+See the "Locomotion Demo" sample and run `Tools > Kinema > Demo Scene` for a fully wired scene built
+in one click.
 
 ## Layout
 
-- `Runtime/` - data, database, matcher, controller. No package dependencies.
-- `Editor/` - bake pipeline, editor window, inspectors.
-- `Samples~/Locomotion Demo/` - collision motor, input provider, follow camera, demo tooling.
+- `Runtime/` - data, database, matcher, controller, recording/replay/ghosting. No package dependencies.
+- `Editor/` - bake pipeline, editor window (Overview/Database/Bake/Tags/Director/Debug/Analysis/Settings),
+  inspectors, rig swap, search benchmark.
+- `Samples~/Locomotion Demo/` - collision motor, input provider (keyboard + gamepad), orbit follow
+  camera, vault/free-jump trigger, demo generator.
 
 ## Documentation
 
