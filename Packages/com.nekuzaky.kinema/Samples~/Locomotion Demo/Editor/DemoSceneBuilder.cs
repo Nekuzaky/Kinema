@@ -17,7 +17,7 @@ namespace Kinema.MotionMatching.Samples.Editor
         internal static string DemoFolder => DemoPaths.SampleRoot;
         internal static string ScenePath => DemoPaths.ScenePath;
 
-        [MenuItem("Kinema/Motion Matching/Build Demo Scene (placeholder)", priority = 21)]
+        [MenuItem("Tools/Kinema/Setup/Placeholder Scene (no rig)", priority = 40)]
         public static void BuildMenu()
         {
             string path = BuildPlaceholder();

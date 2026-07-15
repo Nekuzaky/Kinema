@@ -40,7 +40,7 @@ namespace Kinema.MotionMatching.Samples.Editor
             }
         }
 
-        [MenuItem("Kinema/Motion Matching/Inspect Imported FBX", priority = 40)]
+        [MenuItem("Tools/Kinema/Inspect Imported FBX", priority = 60)]
         public static void InspectFbx()
         {
             var importer = AssetImporter.GetAtPath(FbxPath) as ModelImporter;
@@ -72,7 +72,7 @@ namespace Kinema.MotionMatching.Samples.Editor
             Object.DestroyImmediate(instance);
         }
 
-        [MenuItem("Kinema/Motion Matching/Setup Full Demo From FBX", priority = 41)]
+        [MenuItem("Tools/Kinema/Setup/Demo From FBX", priority = 21)]
         public static void SetupFullDemo() => BuildFullDemo();
 
         /// <summary>Headless entry point (Unity -executeMethod).</summary>
@@ -182,7 +182,7 @@ namespace Kinema.MotionMatching.Samples.Editor
         }
 
         /// <summary>Forces a model to import as Humanoid (idempotent). Returns false if it isn't a model.</summary>
-        private static bool EnsureHumanoid(string path) => EnsureAnimationType(path, ModelImporterAnimationType.Human);
+        internal static bool EnsureHumanoid(string path) => EnsureAnimationType(path, ModelImporterAnimationType.Human);
 
         /// <summary>Forces a model to import as Generic — required for procedural transform-curve clips.</summary>
         private static bool EnsureGeneric(string path) => EnsureAnimationType(path, ModelImporterAnimationType.Generic);

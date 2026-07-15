@@ -69,6 +69,13 @@ namespace Kinema.MotionMatching.Samples.Editor
             Debug.Log($"[Kinema] Test scene using '{config.name}': {database.ClipCount} clips, " +
                       $"{database.FrameCount:N0} frames, {(database.HasTags ? database.TagNames.Length : 0)} tags.");
 
+            // A skinless rig animates correctly and renders nothing, which looks exactly like the
+            // scene failing to build. Say so rather than handing over an empty-looking viewport.
+            if (config.RigPrefab.GetComponentsInChildren<SkinnedMeshRenderer>(true).Length == 0)
+                Debug.LogWarning($"[Kinema] '{config.RigPrefab.name}' has no skinned mesh, so the character will be " +
+                                 "invisible in the scene. It still animates - select it and watch the Transforms, or " +
+                                 "rebake against a rig that carries a skin.");
+
             DemoSceneBuilder.EnsureFolders();
             DemoSceneBuilder.NewDemoScene();
 

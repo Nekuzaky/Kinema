@@ -34,7 +34,7 @@ namespace Kinema.MotionMatching.Editor
 
         #region Unity API
 
-        [MenuItem("Kinema/Motion Matching/Window %#m", priority = 0)]
+        [MenuItem("Tools/Kinema/Motion Matching Window %#m", priority = 0)]
         public static void Open()
         {
             var window = GetWindow<MotionMatchingWindow>();

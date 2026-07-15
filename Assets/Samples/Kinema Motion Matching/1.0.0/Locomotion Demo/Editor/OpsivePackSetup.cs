@@ -12,9 +12,10 @@ namespace Kinema.MotionMatching.Samples.Editor
     /// coverage motion matching actually needs - walk/run/sprint in every direction, diagonals,
     /// strafes, turn-in-place, and (rarely available elsewhere) proper starts and stops.
     ///
-    /// The pack's own rig is used as the demo character: the capture was authored on that skeleton,
-    /// so features, contact bone names and playback all stay on one consistent skeleton with no
-    /// retargeting guesswork.
+    /// The pack ships a bare skeleton with no mesh, so the demo's skinned character is used for
+    /// display and baking instead, with Humanoid retargeting mapping the mocap onto it. Baking on
+    /// the rig that is actually rendered is what keeps the features honest: they describe the body
+    /// on screen, not a proxy of it.
     ///
     /// Clips are auto-tagged from their file names (Crouch, Strafe, Backward, Sprint, Start, Stop...),
     /// which turns 74 clips into a tag-filterable database without painting a single range by hand.
@@ -49,7 +50,7 @@ namespace Kinema.MotionMatching.Samples.Editor
             ("Jump",     "Jump")
         };
 
-        [MenuItem("Kinema/Motion Matching/Setup Demo From Opsive Pack", priority = 42)]
+        [MenuItem("Tools/Kinema/Setup/Demo From Opsive Pack", priority = 22)]
         public static void SetupMenu() => Build();
 
         /// <summary>Headless entry point (Unity -executeMethod).</summary>
@@ -66,12 +67,8 @@ namespace Kinema.MotionMatching.Samples.Editor
 
         private static void Build()
         {
-            GameObject rig = AssetDatabase.LoadAssetAtPath<GameObject>(RigPath);
-            if (rig == null)
-            {
-                Debug.LogError($"[Kinema] Opsive rig not found at {RigPath}. Import the OmniAnimation pack first.");
-                return;
-            }
+            GameObject rig = ResolveDisplayRig();
+            if (rig == null) return;
 
             AnimationClip[] clips = LoadPackClips();
             if (clips.Length == 0)
@@ -84,7 +81,7 @@ namespace Kinema.MotionMatching.Samples.Editor
             string[] boneNames = ResolveHumanoidBones(rig);
             if (boneNames.Length == 0)
             {
-                Debug.LogError("[Kinema] Could not resolve Humanoid bones on the Opsive rig.");
+                Debug.LogError($"[Kinema] Could not resolve Humanoid bones on '{rig.name}'.");
                 return;
             }
             Debug.Log($"[Kinema] Bones: [{string.Join(", ", boneNames)}]");
@@ -121,6 +118,84 @@ namespace Kinema.MotionMatching.Samples.Editor
                 }
             }
             return clips.Distinct().OrderBy(c => c.name).ToArray();
+        }
+
+        /// <summary>
+        /// Picks the rig to bake and display on.
+        ///
+        /// The pack's own rig is a bare skeleton: 68 joints, valid Humanoid avatar, and no mesh at
+        /// all. Baking on it works and the character animates, but there is nothing on screen. So
+        /// when the pack rig carries no skin, fall back to the demo's skinned character and let
+        /// Humanoid retargeting map the mocap onto it - both rigs are Humanoid, so the clips go
+        /// through muscle space and land on whatever proportions the display rig has. Baking on that
+        /// same rig keeps the features consistent with what is actually rendered.
+        /// </summary>
+        private static GameObject ResolveDisplayRig()
+        {
+            var packRig = AssetDatabase.LoadAssetAtPath<GameObject>(RigPath);
+            if (packRig == null)
+            {
+                Debug.LogError($"[Kinema] Opsive rig not found at {RigPath}. Import the OmniAnimation pack first.");
+                return null;
+            }
+            if (HasSkinnedMesh(packRig)) return packRig;
+
+            string skinPath = FindSkinnedModel();
+            if (skinPath == null)
+            {
+                Debug.LogError($"[Kinema] The Opsive rig at {RigPath} is a skeleton with no mesh, and no skinned " +
+                               $"model was found in {DemoPaths.Character} to display instead. Drop a skinned " +
+                               "Humanoid FBX there and re-run.");
+                return null;
+            }
+
+            // Retargeting only exists in muscle space, so the display rig has to be Humanoid too.
+            DemoSetup.EnsureHumanoid(skinPath);
+            var skin = AssetDatabase.LoadAssetAtPath<GameObject>(skinPath);
+            if (!IsHumanoid(skin))
+            {
+                Debug.LogError($"[Kinema] '{skinPath}' could not be imported as Humanoid, so the mocap cannot be " +
+                               "retargeted onto it. Check the model's rig in the import settings.");
+                return null;
+            }
+
+            Debug.Log($"[Kinema] Pack rig carries no mesh (skeleton only). Displaying and baking on " +
+                      $"'{System.IO.Path.GetFileName(skinPath)}' instead; Humanoid retargeting maps the mocap onto it.");
+            return skin;
+        }
+
+        private static bool HasSkinnedMesh(GameObject model)
+        {
+            return model.GetComponentsInChildren<SkinnedMeshRenderer>(true).Length > 0;
+        }
+
+        private static bool IsHumanoid(GameObject model)
+        {
+            if (model == null) return false;
+            GameObject instance = Object.Instantiate(model);
+            try
+            {
+                var animator = instance.GetComponentInChildren<Animator>();
+                return animator != null && animator.isHuman && animator.avatar != null && animator.avatar.isValid;
+            }
+            finally
+            {
+                Object.DestroyImmediate(instance);
+            }
+        }
+
+        /// <summary>First skinned model in the demo's character folder.</summary>
+        private static string FindSkinnedModel()
+        {
+            if (!AssetDatabase.IsValidFolder(DemoPaths.Character)) return null;
+
+            foreach (string guid in AssetDatabase.FindAssets("t:GameObject", new[] { DemoPaths.Character }))
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                var model = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+                if (model != null && HasSkinnedMesh(model)) return path;
+            }
+            return null;
         }
 
         /// <summary>Hips + both feet, read off the rig's Humanoid avatar so the names are exact.</summary>

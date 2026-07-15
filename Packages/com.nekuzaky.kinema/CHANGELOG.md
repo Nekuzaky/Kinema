@@ -4,6 +4,29 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1] - 2026-07-15
+
+### Fixed
+- Opsive setup baked and played on the pack's own rig, which is a bare skeleton: 68 joints, a valid
+  Humanoid avatar and no mesh at all. The character animated correctly and rendered nothing, which
+  looks exactly like the scene failing to build. The setup now detects a skinless pack rig and falls
+  back to the demo's skinned character, letting Humanoid retargeting map the mocap onto it. Baking
+  happens on that same rig, so the features describe the body on screen rather than a proxy of it.
+- The demo model is forced to Humanoid on import when used this way; retargeting only exists in
+  muscle space, so a Generic import silently made the mocap unusable.
+- `Tools > Kinema > Demo Scene` now warns when the resolved rig carries no skinned mesh, instead of
+  handing over an empty-looking viewport.
+
+### Changed
+- All menus consolidated under `Tools > Kinema`. There were two entry points (a top-level `Kinema`
+  menu and `Tools > Kinema`), which is one too many.
+
+### Notes
+- Retargeted bake vs the skeleton bake: peak root speed 5.92 m/s (was 6.47 - proportions differ),
+  38% of frames travelling (was 40%), foot contact on 82% of frames (was 53%). The contact jump is
+  the more plausible figure: outside a sprint flight phase a foot should almost always be down, so
+  the skeleton bake was under-detecting contacts against the 0.15 m height threshold.
+
 ## [1.6.0] - 2026-07-15
 
 Data inspection release. The demo answers "does locomotion feel right"; nothing answered "is my
