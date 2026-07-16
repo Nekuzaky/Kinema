@@ -98,8 +98,30 @@ namespace Kinema.MotionMatching
 
         #region Tools and Utilities
 
+        /// <summary>
+        /// A local position reflected across the character's X plane.
+        /// </summary>
+        /// <remarks>
+        /// Public so it can be pinned by a test. The job cannot be: it is a Burst struct reading an
+        /// AnimationStream, so the only way to know the reflection itself is right is to have the
+        /// formula somewhere a test can reach. What no test here can tell you is whether this rig's
+        /// left and right bones carry mirrored local axes - that assumption is the experimental part,
+        /// and only the eye settles it.
+        /// </remarks>
+        public static Vector3 ReflectPosition(Vector3 p) => new Vector3(-p.x, p.y, p.z);
+
+        /// <summary>
+        /// A local rotation reflected across the character's X plane.
+        /// </summary>
+        /// <remarks>
+        /// Mirroring by <c>M = diag(-1, 1, 1)</c> maps a rotation R to <c>M R M</c>. M reverses
+        /// orientation, so that is a rotation about <c>M·axis</c> by <c>-angle</c>: the axis loses its
+        /// x flip and the angle its sign, which together leave <c>(x, -y, -z, w)</c>.
+        /// </remarks>
+        public static Quaternion ReflectRotation(Quaternion q) => new Quaternion(q.x, -q.y, -q.z, q.w);
+
         /// <summary>LeftFoot -> RightFoot, mixamorig:LeftArm -> mixamorig:RightArm, etc. Null when unpaired.</summary>
-        private static string MirrorName(string name)
+        public static string MirrorName(string name)
         {
             if (name.Contains("Left")) return name.Replace("Left", "Right");
             if (name.Contains("Right")) return name.Replace("Right", "Left");
@@ -137,6 +159,9 @@ namespace Kinema.MotionMatching
                     Vector3 p = Pos[src];
                     Quaternion q = Rot[src];
 
+                    // Same expressions as ReflectPosition/ReflectRotation, inlined: a Burst job cannot
+                    // call them, and a job that drifted from the formula the tests pin would mirror
+                    // wrongly while every test still passed.
                     Handles[i].SetLocalPosition(stream, new Vector3(-p.x, p.y, p.z));
                     Handles[i].SetLocalRotation(stream, new Quaternion(q.x, -q.y, -q.z, q.w));
                 }
