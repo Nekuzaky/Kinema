@@ -41,8 +41,11 @@ namespace Kinema.MotionMatching
         [Tooltip("A candidate must beat continuing the current clip by this fraction to trigger a jump.")]
         [SerializeField, Range(0f, 0.5f)] private float _jumpImprovementThreshold = 0.02f;
 
+        // 0.2 is Clavet's number (GDC 2016): his hysteresis is "same anim && abs(dt) < 0.2", and it is
+        // the whole of what keeps his system stable - he carries no clip-change penalty at all. Ours
+        // sat at 0.12 for no reason anyone wrote down.
         [Tooltip("Candidates within this many seconds of the current frame (same clip) count as 'keep playing'.")]
-        [SerializeField, Range(0f, 0.3f)] private float _continuityWindow = 0.12f;
+        [SerializeField, Range(0f, 0.3f)] private float _continuityWindow = 0.2f;
 
         [Tooltip("Penalty on candidates from a different clip, as a fraction of what continuing the " +
                  "current one costs. 0.25 = only leave a clip for something 25% better. Raise to " +
@@ -204,6 +207,16 @@ namespace Kinema.MotionMatching
         public float CurrentStrideWarp => _currentStrideWarp;
         public float AverageCost => _totalSearches > 0 ? _costSum / _totalSearches : 0f;
 
+        /// <summary>
+        /// Fraction of live time spent mid-transition, blending two clips together rather than
+        /// playing one. The number "robotic" is really about: a jump rate counts decisions, this
+        /// counts their cost. Cutting every 0.28s with a 0.15s blend puts this at 54%, and a
+        /// character that is the average of two motions for half its life never shows a whole stride.
+        /// Cheap to drive down the wrong way - a shorter blend hides it and pops instead - so read it
+        /// beside the jump rate, not instead of it.
+        /// </summary>
+        public float BlendFraction => _liveSeconds > 1e-4f ? _blendingSeconds / _liveSeconds : 0f;
+
         /// <summary>Clears coverage counts and cost accumulators.</summary>
         public void ResetTelemetry()
         {
@@ -211,6 +224,8 @@ namespace Kinema.MotionMatching
             _totalSearches = 0;
             _totalJumps = 0;
             _costSum = 0f;
+            _blendingSeconds = 0f;
+            _liveSeconds = 0f;
         }
 
         /// <summary>Applies a named weight preset baked into the database. Returns false when unknown.</summary>
@@ -344,6 +359,7 @@ namespace Kinema.MotionMatching
 
         private bool _blending;
         private float _blend01;
+        private float _blendingSeconds, _liveSeconds;
 
         private float _searchTimer;
         private bool _initialized;
@@ -467,6 +483,7 @@ namespace Kinema.MotionMatching
             _snapshots = new SearchSnapshotRecorder(240, FeatureGroupExtensions.Count, _database.Schema.TrajectoryPointCount);
             _frameUsage = new int[_database.FrameCount];
             _totalSearches = 0; _totalJumps = 0; _costSum = 0f;
+            _blendingSeconds = 0f; _liveSeconds = 0f;
             _debug.DesiredTrajectory = _desiredTrajectory;
             _debug.CandidateTrajectory = _candidateTrajectory;
             _debug.Clear();
@@ -1043,12 +1060,21 @@ namespace Kinema.MotionMatching
 
         private void UpdateBlend(float dt)
         {
+            _liveSeconds += dt;
+
             if (!_blending)
             {
                 _mixer.SetInputWeight(_activeSlot, 1f);
                 _mixer.SetInputWeight(1 - _activeSlot, 0f);
                 return;
             }
+
+            // What "robotic" actually measures. A jump rate says how often the character changes its
+            // mind; this says how much of the time it is the average of two animations instead of
+            // being one of them - and an average of two motions is neither. Cuts every 0.28s with a
+            // 0.15s blend leaves the character mid-transition 54% of the time, and no whole stride is
+            // ever visible. The jump rate can look survivable while this one is not.
+            _blendingSeconds += dt;
 
             _blend01 += _blendTime > 0f ? dt / _blendTime : 1f;
             float w = Mathf.Clamp01(_blend01);
@@ -1444,7 +1470,7 @@ namespace Kinema.MotionMatching
             // Jump rate as a fraction of searches: needs no time base and is the flicker read - a calm
             // character sits near 0, a stuttering one climbs.
             float jumpRate = _totalSearches > 0 ? 100f * _totalJumps / _totalSearches : 0f;
-            text.Append($"jump rate {jumpRate:F0}%");
+            text.Append($"jump rate {jumpRate:F0}%   blending {BlendFraction * 100f:F0}%");
             if (_probe != null) text.Append($"   foot slide {_probe.FootSlideRate:F3} m/s");
 
             var style = new GUIStyle
