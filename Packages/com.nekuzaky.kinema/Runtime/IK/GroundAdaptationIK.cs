@@ -81,17 +81,26 @@ namespace Kinema.MotionMatching
             if (dt <= 0f) return;
             float t = 1f - Mathf.Exp(-_sharpness * dt);
 
-            // Pass 1: probe every foot, find how much each needs to move vertically.
+            // Which feet are actually down this frame. Everything below hangs on it: a foot in the
+            // air is not standing on anything, so it has no surface to be conformed to and no say in
+            // where the pelvis goes. Correcting it anyway pins it to the floor for the whole swing -
+            // the character stops picking its feet up, and drags the pelvis down to wherever the
+            // swing foot happened to be. That reads as walking while seated.
+            byte contacts = _controller.CurrentContacts;
+
+            // Pass 1: probe every planted foot, find how much each needs to move vertically.
             float lowestCorrection = 0f;
             for (int i = 0; i < _legs.Length; i++)
             {
                 if (!_legs[i].Valid) continue;
-                ProbeLeg(ref _legs[i], t);
-                lowestCorrection = Mathf.Min(lowestCorrection, _legs[i].HeightOffset);
+
+                bool grounded = (contacts & (1 << i)) != 0;
+                ProbeLeg(ref _legs[i], t, grounded);
+                if (grounded) lowestCorrection = Mathf.Min(lowestCorrection, _legs[i].HeightOffset);
             }
 
-            // Pass 2: a foot that must drop below the clip's floor can only reach if the pelvis
-            // follows it down; otherwise the leg would have to stretch.
+            // Pass 2: a planted foot that must drop below the clip's floor can only reach if the
+            // pelvis follows it down; otherwise the leg would have to stretch.
             float pelvisTarget = Mathf.Clamp(lowestCorrection, -_maxPelvisDrop, 0f) * _weight;
             _pelvisOffset = Mathf.Lerp(_pelvisOffset, pelvisTarget, t);
             _pelvis.position += Vector3.up * _pelvisOffset;
@@ -132,14 +141,21 @@ namespace Kinema.MotionMatching
             }
         }
 
-        private void ProbeLeg(ref Leg leg, float t)
+        /// <summary>
+        /// Vertical correction and sole tilt for one leg. A foot that is not planted gets neither:
+        /// its target is zero, so the smoothing carries it back to whatever arc the clip authored.
+        /// The alternative - measuring a swing foot against the floor below it - reports the whole
+        /// height of the step as an error to be corrected away, which is the one thing that must not
+        /// happen to a foot whose entire job this frame is to be off the ground.
+        /// </summary>
+        private void ProbeLeg(ref Leg leg, float t, bool grounded)
         {
             Vector3 footPosition = leg.Foot.position;
             Vector3 origin = footPosition + Vector3.up * _probeHeight;
             float targetOffset = 0f;
             Quaternion targetTilt = Quaternion.identity;
 
-            if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, _probeHeight + _probeDistance, _groundLayers, QueryTriggerInteraction.Ignore))
+            if (grounded && Physics.Raycast(origin, Vector3.down, out RaycastHit hit, _probeHeight + _probeDistance, _groundLayers, QueryTriggerInteraction.Ignore))
             {
                 float soleY = footPosition.y - _ankleHeight;
                 targetOffset = hit.point.y - soleY;
