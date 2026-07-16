@@ -123,3 +123,6 @@ InitTestScene*.unity*
 # Local test/coverage run output (batchmode -runTests / -enableCodeCoverage).
 /CodeCoverage/
 /*-results.xml
+
+# JetBrains Rider
+/.idea/
