@@ -125,6 +125,17 @@ namespace Kinema.MotionMatching.Samples.Editor
             }
         }
 
+        internal static void SetBool(Object component, string property, bool value)
+        {
+            var so = new SerializedObject(component);
+            SerializedProperty prop = so.FindProperty(property);
+            if (prop != null)
+            {
+                prop.boolValue = value;
+                so.ApplyModifiedPropertiesWithoutUndo();
+            }
+        }
+
         internal static void EnsureFolders()
         {
             CreateFolderIfMissing(DemoFolder, "Materials");

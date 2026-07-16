@@ -21,23 +21,48 @@ namespace Kinema.MotionMatching.Samples.Editor
     {
         #region Main API
 
-        private static string ScenePath => DemoPaths.SampleRoot + "/KinemaTestScene.unity";
+        /// <summary>Which scene to generate. All share one bake; only the environment and who drives the characters differ.</summary>
+        private enum DemoScene { Test, Parkour, Sandbox }
+
+        private static string ScenePath(DemoScene flavor) => DemoPaths.SampleRoot + flavor switch
+        {
+            DemoScene.Parkour => "/KinemaParkourScene.unity",
+            DemoScene.Sandbox => "/KinemaSandboxScene.unity",
+            _ => "/KinemaTestScene.unity"
+        };
 
         [MenuItem("Tools/Kinema/Demo Scene", priority = 0)]
-        public static void BuildMenu()
+        public static void BuildTestMenu() => BuildMenu(DemoScene.Test);
+
+        [MenuItem("Tools/Kinema/Scenes/Parkour", priority = 1)]
+        public static void BuildParkourMenu() => BuildMenu(DemoScene.Parkour);
+
+        [MenuItem("Tools/Kinema/Scenes/Sandbox", priority = 2)]
+        public static void BuildSandboxMenu() => BuildMenu(DemoScene.Sandbox);
+
+        private static void BuildMenu(DemoScene flavor)
         {
-            if (!Build(out string error))
+            if (!Build(flavor, out string error))
             {
                 EditorUtility.DisplayDialog("Kinema", error, "OK");
                 return;
             }
-            EditorSceneManager.OpenScene(ScenePath);
+            EditorSceneManager.OpenScene(ScenePath(flavor));
         }
 
-        /// <summary>Headless entry point (Unity -executeMethod).</summary>
+        /// <summary>Headless entry point (Unity -executeMethod). Builds the test scene.</summary>
         public static void BuildFromCommandLine()
         {
-            if (!Build(out string error)) Debug.LogError("[Kinema] " + error);
+            if (!Build(DemoScene.Test, out string error)) Debug.LogError("[Kinema] " + error);
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+        }
+
+        /// <summary>Headless: build every scene flavor in one run (used to verify them all).</summary>
+        public static void BuildAllFromCommandLine()
+        {
+            foreach (DemoScene flavor in new[] { DemoScene.Test, DemoScene.Parkour, DemoScene.Sandbox })
+                if (!Build(flavor, out string error)) Debug.LogError($"[Kinema] {flavor}: {error}");
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
         }
@@ -60,7 +85,7 @@ namespace Kinema.MotionMatching.Samples.Editor
         /// Source order is quality order: real mocap beats a hand-dropped FBX, which beats nothing.
         /// Each source bakes from scratch, so the scene always matches the data on disk.
         /// </summary>
-        private static bool Build(out string error)
+        private static bool Build(DemoScene flavor, out string error)
         {
             error = null;
             DemoBake bake;
@@ -88,7 +113,7 @@ namespace Kinema.MotionMatching.Samples.Editor
                 return false;
             }
 
-            BuildScene(bake);
+            BuildScene(bake, flavor);
             return true;
         }
 
@@ -98,7 +123,7 @@ namespace Kinema.MotionMatching.Samples.Editor
         /// fake-null: the C# reference is alive, `== null` is true, and the wiring silently drops.
         /// Everything is therefore loaded from disk after the scene exists.
         /// </summary>
-        private static void BuildScene(DemoBake bake)
+        private static void BuildScene(DemoBake bake, DemoScene flavor)
         {
             DemoSceneBuilder.EnsureFolders();
             DemoSceneBuilder.NewDemoScene();
@@ -109,33 +134,62 @@ namespace Kinema.MotionMatching.Samples.Editor
             var jumpMoving = AssetDatabase.LoadAssetAtPath<MotionEventDefinition>(bake.JumpMovingEventPath);
             var jumpIdle = AssetDatabase.LoadAssetAtPath<MotionEventDefinition>(bake.JumpIdleEventPath);
 
-            Debug.Log($"[Kinema] Demo scene from '{rig.name}': {database.ClipCount} clips, {database.FrameCount:N0} frames, " +
+            Debug.Log($"[Kinema] {flavor} scene from '{rig.name}': {database.ClipCount} clips, {database.FrameCount:N0} frames, " +
                       $"{(database.HasTags ? database.TagNames.Length : 0)} tags.");
 
-            // A skinless rig animates correctly and renders nothing, which looks exactly like the
-            // scene failing to build. Say so rather than handing over an empty-looking viewport.
             if (rig.GetComponentsInChildren<SkinnedMeshRenderer>(true).Length == 0)
                 Debug.LogWarning($"[Kinema] '{rig.name}' has no skinned mesh, so the character will be invisible. " +
                                  "It still animates - rebake against a rig that carries a skin.");
 
             (Material ground, Material obstacle) = DemoPresentation.CreateMaterials();
             DemoSceneBuilder.BuildEnvironment(ground, obstacle);
-            BuildTestTerrain(obstacle);
 
-            GameObject character = BuildCharacter(rig, database, vaultEvent, jumpMoving, jumpIdle);
-            DemoSceneBuilder.WireCamera(character.transform);
+            switch (flavor)
+            {
+                case DemoScene.Parkour: BuildParkourCourse(obstacle); break;
+                case DemoScene.Sandbox: BuildSandboxArena(obstacle); break;
+                default: BuildTestTerrain(obstacle); break;
+            }
 
-            // Lighting, gradient ambient, URP post-processing and the character skin material -
-            // everything that lifts the scene above programmer-art, all generated, no imported assets.
-            DemoPresentation.Apply(character, Camera.main);
-            Selection.activeGameObject = character;
+            // The player: the full stack plus input, recording and ghost director.
+            (GameObject player, _) = BuildBody(rig, database, vaultEvent, jumpMoving, jumpIdle, "Character", Vector3.zero, autoVault: false);
+            AddPlayerDrivers(player, database);
+            DemoSceneBuilder.WireCamera(player.transform);
+
+            // AI: the same motion matching stack driven by an AI provider instead of input - the
+            // point being that the controller is input-agnostic, so an NPC and the player run
+            // identical locomotion. Each keeps its collision motor (unlike ghosts) and auto-vaults.
+            switch (flavor)
+            {
+                case DemoScene.Parkour:
+                    // One chaser running the course behind the player.
+                    BuildFollowerAI(rig, database, vaultEvent, jumpMoving, jumpIdle, new Vector3(-24f, 0f, -26f), player.transform);
+                    break;
+                case DemoScene.Sandbox:
+                    // A crowd of wanderers: many matched characters on screen at once.
+                    for (int i = 0; i < 6; i++)
+                    {
+                        float angle = i / 6f * Mathf.PI * 2f;
+                        var pos = new Vector3(Mathf.Cos(angle) * 6f, 0f, Mathf.Sin(angle) * 6f);
+                        BuildWandererAI(rig, database, vaultEvent, jumpMoving, jumpIdle, pos);
+                    }
+                    break;
+            }
+
+            DemoPresentation.Apply(player, Camera.main);
+            Selection.activeGameObject = player;
 
             UnityEngine.SceneManagement.Scene scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
             EditorSceneManager.MarkSceneDirty(scene);
-            EditorSceneManager.SaveScene(scene, ScenePath);
+            EditorSceneManager.SaveScene(scene, ScenePath(flavor));
 
-            Debug.Log($"[Kinema] Demo scene saved → {ScenePath}. Play, then: WASD move, " +
-                      "Space vault at a low ledge, C crouch, R record, G ghost, K clear ghosts.");
+            string extra = flavor switch
+            {
+                DemoScene.Parkour => "Run the course; an AI chases and auto-vaults behind you.",
+                DemoScene.Sandbox => "Six AI wanderers share the arena - watch the matcher run on all of them.",
+                _ => "R record, G ghost, K clear ghosts."
+            };
+            Debug.Log($"[Kinema] {flavor} scene saved → {ScenePath(flavor)}. Play: WASD move, Space vault/jump, C crouch. {extra}");
         }
 
         /// <summary>
@@ -206,75 +260,157 @@ namespace Kinema.MotionMatching.Samples.Editor
             }
         }
 
-        private static GameObject BuildCharacter(GameObject rig, MotionMatchingDatabase dbRef,
-            MotionEventDefinition vaultEvent, MotionEventDefinition jumpMoving, MotionEventDefinition jumpIdle)
+        /// <summary>
+        /// Parkour: a continuous circuit of everything the event system does - a run of vault walls,
+        /// a gap-jump gauntlet, an ascending stair of platforms, then a long return straight. Laid
+        /// out as a loop so a chasing AI and the player both keep moving through it.
+        /// </summary>
+        private static void BuildParkourCourse(Material material)
         {
-            var character = (GameObject)PrefabUtility.InstantiatePrefab(rig);
-            character.name = "Character";
-            character.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+            var root = new GameObject("Parkour Course");
+            float x = -24f;
+
+            DemoSceneBuilder.CreateBox(root.transform, new Vector3(x, 0.05f, -26f), new Vector3(4f, 0.1f, 6f), Quaternion.identity, material);
+
+            // Vault run: four walls across the trigger's height window, a stride apart.
+            for (int i = 0; i < 4; i++)
+                DemoSceneBuilder.CreateBox(root.transform, new Vector3(x, 0.35f + i * 0.03f, -20f + i * 3f),
+                    new Vector3(3.5f, 0.7f + i * 0.06f, 0.4f), Quaternion.identity, material);
+
+            // Gap-jump gauntlet: five islands, gaps within the run-jump's reach.
+            float z = -4f;
+            for (int i = 0; i < 5; i++)
+            {
+                DemoSceneBuilder.CreateBox(root.transform, new Vector3(x, 0.3f, z), new Vector3(3f, 0.6f, 2.6f), Quaternion.identity, material);
+                z += 2.6f + 1.5f;
+            }
+
+            // Ascending platforms, each a vaultable step from the last.
+            z += 3f;
+            for (int i = 0; i < 5; i++)
+            {
+                float h = 0.6f + i * 0.5f;
+                DemoSceneBuilder.CreateBox(root.transform, new Vector3(x, h * 0.5f, z + i * 2.4f), new Vector3(3.5f, h, 2f), Quaternion.identity, material);
+            }
+
+            // Return straight along the far side, so the circuit closes.
+            DemoSceneBuilder.CreateBox(root.transform, new Vector3(x + 9f, 0.02f, 4f), new Vector3(3f, 0.04f, 44f), Quaternion.identity, material);
+        }
+
+        /// <summary>
+        /// Sandbox: an open arena with a scatter of low, vaultable blocks and a soft perimeter, room
+        /// for a crowd of wandering AIs and the player to move without a scripted route - the "just
+        /// let it run and watch the matcher" scene.
+        /// </summary>
+        private static void BuildSandboxArena(Material material)
+        {
+            var root = new GameObject("Sandbox");
+
+            // A ring of low blocks: obstacles to route around and auto-vault, not a course.
+            for (int i = 0; i < 10; i++)
+            {
+                float a = i / 10f * Mathf.PI * 2f;
+                float r = 10f + (i % 3) * 2f;
+                var pos = new Vector3(Mathf.Cos(a) * r, 0.35f, Mathf.Sin(a) * r);
+                DemoSceneBuilder.CreateBox(root.transform, pos, new Vector3(2f, 0.7f, 2f), Quaternion.Euler(0f, a * Mathf.Rad2Deg, 0f), material);
+            }
+
+            // A couple of ramps for the ground-adaptation IK to work against.
+            DemoSceneBuilder.CreateBox(root.transform, new Vector3(-14f, 0.5f, 0f), new Vector3(5f, 0.3f, 8f), Quaternion.Euler(0f, 0f, 12f), material);
+            DemoSceneBuilder.CreateBox(root.transform, new Vector3(14f, 0.5f, 0f), new Vector3(5f, 0.3f, 8f), Quaternion.Euler(0f, 0f, -12f), material);
+        }
+
+        /// <summary>
+        /// The shared body every character has - player or AI: the motion matching stack, collision
+        /// motor, IK, tuned weights and the vault trigger. What drives it (input vs AI) is added on
+        /// top by the caller, which is the whole point: the controller does not know or care.
+        /// </summary>
+        private static (GameObject body, MotionMatchingController controller) BuildBody(
+            GameObject rig, MotionMatchingDatabase dbRef, MotionEventDefinition vaultEvent,
+            MotionEventDefinition jumpMoving, MotionEventDefinition jumpIdle, string name, Vector3 position, bool autoVault)
+        {
+            var body = (GameObject)PrefabUtility.InstantiatePrefab(rig);
+            body.name = name;
+            body.transform.SetPositionAndRotation(position, Quaternion.identity);
 
             // Explicit null checks: GetComponent returns a fake-null Unity object, which ?? does not catch.
-            var cc = character.GetComponent<CharacterController>();
-            if (cc == null) cc = character.AddComponent<CharacterController>();
+            var cc = body.GetComponent<CharacterController>();
+            if (cc == null) cc = body.AddComponent<CharacterController>();
             cc.center = new Vector3(0f, 0.9f, 0f);
             cc.radius = 0.3f;
             cc.height = 1.8f;
-
-            // Unity's defaults are tuned for the default 0.5 radius: left alone on a 0.3-radius
-            // capsule the skin width is 27% of the radius, which its own docs call out as a cause of
-            // jitter. The motor also pushes down constantly to stay grounded, so the body ends up
-            // oscillating inside that skin - visible as a character that never quite settles, while
-            // ghosts (no motor, root motion straight onto the transform) stay smooth.
+            // Unity's skin width default (0.08) is tuned for the 0.5 default radius; on this 0.3
+            // capsule it is 27% of the radius, which the docs name as a jitter cause. 10% + zero
+            // min-move is the documented anti-jitter setup.
             cc.skinWidth = cc.radius * 0.1f;
-            cc.minMoveDistance = 0f; // "keep at 0 to avoid jittering" - CharacterController docs.
+            cc.minMoveDistance = 0f;
 
-            var animator = character.GetComponent<Animator>();
-            if (animator == null) animator = character.AddComponent<Animator>();
+            var animator = body.GetComponent<Animator>();
+            if (animator == null) animator = body.AddComponent<Animator>();
             animator.applyRootMotion = true;
 
-            var controller = character.AddComponent<MotionMatchingController>();
-            character.AddComponent<FootLockIK>();
-            character.AddComponent<GroundAdaptationIK>();
-            character.AddComponent<MotionQualityProbe>();
-            character.AddComponent<SessionRecorder>();
-            character.AddComponent<PoseRecorder>();
-            character.AddComponent<CharacterMotor>();
-            character.AddComponent<LocomotionInputProvider>();
-            character.AddComponent<GhostReplayDirector>();
-
-            // Only meaningful on a tagged set; on an untagged one it would warn every run.
-            if (dbRef.HasTags) character.AddComponent<StanceTagController>();
+            var controller = body.AddComponent<MotionMatchingController>();
+            body.AddComponent<FootLockIK>();
+            body.AddComponent<GroundAdaptationIK>();
+            body.AddComponent<CharacterMotor>();
 
             if (vaultEvent != null || jumpMoving != null || jumpIdle != null)
             {
-                var vault = character.AddComponent<VaultTrigger>();
+                var vault = body.AddComponent<VaultTrigger>();
                 DemoSceneBuilder.SetObjectReference(vault, "_vaultEvent", vaultEvent);
                 DemoSceneBuilder.SetObjectReference(vault, "_jumpMovingEvent", jumpMoving);
                 DemoSceneBuilder.SetObjectReference(vault, "_jumpIdleEvent", jumpIdle);
-            }
-            else
-            {
-                Debug.LogWarning("[Kinema] No vault event available, so Space will do nothing in this scene.");
+                if (autoVault) DemoSceneBuilder.SetBool(vault, "_autoVault", true);
             }
 
             DemoSceneBuilder.SetObjectReference(controller, "_database", dbRef);
             DemoSceneBuilder.SetObjectReference(controller, "_animator", animator);
-            // The mocap set is thin at higher speeds, so an unpenalised search hops between clips
-            // several times a second. Each hop blends, and a blend drags the planted foot far enough
-            // to break the foot lock. A firmer clip-change cost trades a little responsiveness for
-            // feet that stay put - which is what reads as real.
             DemoSceneBuilder.SetFloat(controller, "_clipChangeCost", 0.25f);
-
-            // Trajectory-dominant weights. The default has the pose half (bone pos/vel + root vel)
-            // slightly outweighing the trajectory half; on a mostly-idle mocap set that lets a
-            // momentarily-slow pose pull the search into the huge idle basin while the player is
-            // still holding forward - the character stutters idle/walk/idle. Weighting where the
-            // player wants to go over the exact current pose keeps intent in charge while moving.
+            // Trajectory-dominant weights so intent beats a momentarily-idle pose (the idle/walk stutter).
             DemoSceneBuilder.SetFloat(controller, "_weights.TrajectoryPosition", 1.6f);
             DemoSceneBuilder.SetFloat(controller, "_weights.TrajectoryDirection", 1.3f);
             PrefabUtility.RecordPrefabInstancePropertyModifications(controller);
 
-            return character;
+            return (body, controller);
+        }
+
+        /// <summary>Player-only drivers: input, recording, ghosts, quality probe, stance filter.</summary>
+        private static void AddPlayerDrivers(GameObject player, MotionMatchingDatabase dbRef)
+        {
+            player.AddComponent<MotionQualityProbe>();
+            player.AddComponent<SessionRecorder>();
+            player.AddComponent<PoseRecorder>();
+            player.AddComponent<LocomotionInputProvider>();
+            player.AddComponent<GhostReplayDirector>();
+            if (dbRef.HasTags) player.AddComponent<StanceTagController>();
+        }
+
+        private static void BuildFollowerAI(GameObject rig, MotionMatchingDatabase db,
+            MotionEventDefinition vault, MotionEventDefinition jumpM, MotionEventDefinition jumpI, Vector3 position, Transform target)
+        {
+            (GameObject ai, _) = BuildBody(rig, db, vault, jumpM, jumpI, "AI Follower", position, autoVault: true);
+            var follow = ai.AddComponent<AIFollowProvider>();
+            follow.SetTarget(target);
+            Tint(ai, new Color(1f, 0.55f, 0.4f)); // warm, to read apart from the player
+        }
+
+        private static void BuildWandererAI(GameObject rig, MotionMatchingDatabase db,
+            MotionEventDefinition vault, MotionEventDefinition jumpM, MotionEventDefinition jumpI, Vector3 position)
+        {
+            (GameObject ai, _) = BuildBody(rig, db, vault, jumpM, jumpI, "AI Wanderer", position, autoVault: false);
+            ai.AddComponent<AIWanderProvider>();
+            Tint(ai, new Color(0.5f, 0.8f, 0.55f)); // green, distinct from player and follower
+        }
+
+        /// <summary>Tints every renderer with a shared instance of a material coloured for this character type.</summary>
+        private static void Tint(GameObject character, Color color)
+        {
+            var renderers = character.GetComponentsInChildren<Renderer>(true);
+            if (renderers.Length == 0 || renderers[0].sharedMaterial == null) return;
+            var mat = new Material(renderers[0].sharedMaterial);
+            if (mat.HasProperty("_BaseColor")) mat.SetColor("_BaseColor", color);
+            else mat.color = color;
+            foreach (var r in renderers) r.sharedMaterial = mat;
         }
 
         #endregion

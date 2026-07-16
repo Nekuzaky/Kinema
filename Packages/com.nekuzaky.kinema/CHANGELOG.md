@@ -4,6 +4,26 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.24.0] - 2026-07-16
+
+### Added
+- Two more demo scenes under `Tools > Kinema > Scenes`, each generated from the same bake:
+  - **Parkour**: a continuous circuit - a run of vault walls, a gap-jump gauntlet, an ascending
+    platform stair, a return straight - with an AI follower chasing the player and auto-vaulting.
+  - **Sandbox**: an open arena of scattered vaultable blocks and ramps with six AI wanderers, so
+    the matcher visibly runs on seven characters at once.
+- `AIWanderProvider`: AI locomotion intent that walks to random points in a radius, pauses, and
+  wanders on - the same `ILocomotionProvider` the player uses, so it drives the identical stack with
+  no input, and its stop/turn/start cycle exercises the hardest transitions. Joins the existing
+  `AIFollowProvider`; both keep their collision motor (unlike ghosts) and auto-vault.
+- The character build is split into a shared body (matching stack, motor, IK, tuned weights, vault)
+  and the driver on top - input for the player, an AI provider for NPCs - which is the point: the
+  controller is input-agnostic, so player and AI run byte-identical locomotion.
+
+101/101 EditMode tests. Verified headless: Parkour carries 2 matched characters (player + follower
+with vault and motor), Sandbox 7 (player + six wanderers), and the player keeps input, recording and
+ghosts in both.
+
 ## [1.23.1] - 2026-07-16
 
 ### Fixed
