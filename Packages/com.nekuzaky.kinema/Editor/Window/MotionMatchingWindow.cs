@@ -106,6 +106,17 @@ namespace Kinema.MotionMatching.Editor
                 if (!string.IsNullOrEmpty(_version))
                     GUILayout.Label(_version, MotionMatchingStyles.KeyLabel, GUILayout.ExpandWidth(false));
                 GUILayout.FlexibleSpace();
+
+                // In the header, on every tab: the moment worth capturing is whenever something looks
+                // wrong, and that is never the moment you feel like hunting through a menu for it.
+                if (GUILayout.Button(new GUIContent("Copy Diagnostics",
+                        "Copy every number about this scene's characters to the clipboard, as plain text."),
+                        EditorStyles.miniButton, GUILayout.Width(110)))
+                {
+                    KinemaDiagnostics.CopyDiagnostics();
+                    ShowNotification(new GUIContent("Diagnostics copied"));
+                }
+
                 if (Application.isPlaying)
                     MotionMatchingStyles.StatusPill("LIVE", MotionMatchingStyles.Accent);
                 DrawStatusPill();

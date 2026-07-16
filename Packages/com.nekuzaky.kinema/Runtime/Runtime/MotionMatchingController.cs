@@ -205,6 +205,14 @@ namespace Kinema.MotionMatching
 
         /// <summary>Current clip-playback scale applied by stride warping (1 = authored rate).</summary>
         public float CurrentStrideWarp => _currentStrideWarp;
+
+        /// <summary>
+        /// How fast the root is actually travelling, measured from the transform. Read it against
+        /// <see cref="DesiredVelocity"/>: the two disagreeing while nothing is asked of the character
+        /// is the signature of a drift, and the pair is the first thing worth knowing about a
+        /// character that "moves on its own".
+        /// </summary>
+        public Vector3 MeasuredVelocity => _measuredVelocity;
         public float AverageCost => _totalSearches > 0 ? _costSum / _totalSearches : 0f;
 
         /// <summary>
