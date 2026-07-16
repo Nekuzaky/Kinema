@@ -4,6 +4,21 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.0] - 2026-07-16
+
+### Added
+- Learned Motion Matching, step 1: `Tools > Kinema > Learned MM > Export Training Dataset` turns a
+  baked database into a training dataset - the normalized float32 feature matrix, per-dimension
+  mean/std, per-frame clip index and time, and gait phase, as flat little-endian binaries plus a
+  self-describing `manifest.json` and a ready-to-run numpy `load_dataset.py`. Binary, not CSV, since
+  a real mocap set is millions of floats. Clip boundaries are exported explicitly so the stepper
+  network can build sequences that never cross a clip cut.
+  - Verified against the demo set: 4,705 frames x 44 dims, features.f32 exactly frames*dim*4 bytes,
+    values byte-identical to the database, 74 clips, 4,631 valid step pairs.
+  - This is the foundation for the decompressor/stepper/projector networks that replace the database
+    at runtime (Holden et al., SIGGRAPH 2020). Next steps: Unity Sentis runtime inference, then the
+    stepper. Sentis is not yet a package dependency - it is only needed at step 2.
+
 ## [1.24.0] - 2026-07-16
 
 ### Added

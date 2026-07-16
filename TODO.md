@@ -127,9 +127,13 @@ left, roughly in priority order within each section.
       ranges into the config via `AutoTagApplier` (same SerializedObject path as hand-authoring, so
       undo works; re-applying replaces instead of stacking; unit tested). Rebake afterwards to get
       the tags into the database.
-- [ ] Learned Motion Matching (Ubisoft La Forge): decompressor / stepper / projector networks
-      replacing the database at runtime for large memory savings. The normalized, well-typed data
-      model should make training-data export straightforward when this is picked up.
+- [~] Learned Motion Matching (Ubisoft La Forge): decompressor / stepper / projector networks
+      replacing the database at runtime for large memory savings. **Step 1 done**: a baked database
+      exports to a training dataset (`Tools > Kinema > Learned MM > Export Training Dataset`) -
+      float32 feature matrix + mean/std + per-frame clip/time + gait phase + a self-describing
+      manifest and a numpy loader; clip boundaries exported so the stepper never trains across a cut.
+      Next: Unity Sentis runtime (ONNX inference, not yet a package dependency) and the stepper
+      network.
 - [x] **Timeline / cutscene interop** - `Kinema.MotionMatching.Timeline` (separate optional assembly,
       only compiles with `com.unity.timeline` installed): `MotionMatchingTrack` + `MotionMatchingClipAsset`
       extend `SetMatchingActive` to Timeline - drop a clip on the track to fade matching in for its
