@@ -4,6 +4,39 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.26.0] - 2026-07-16
+
+Brain-driven AI, LLM-ready, all visible from the window.
+
+### Added
+- Two-layer AI: a brain decides *what to do* (high-level goals), a provider turns that into the same
+  locomotion intent a player's input would, so an NPC drives the identical motion matching stack.
+  - `AIAgentCommand` / `AIGoal` (Idle/MoveTo/Follow/Flee/Patrol/Wander) + `IAIBrain` + `AIContext`:
+    the contract between deciding and moving (Runtime).
+  - `AICommandProvider` (`ILocomotionProvider`): resolves a command into desired velocity with
+    arrival easing and standoff, and takes a runtime override from the window (a manual nudge; the
+    brain resumes when it lapses).
+  - `ScriptedAIBrain`: deterministic Wander / Patrol / FollowPlayer - the always-available default
+    and the fallback for any smarter brain.
+- `LLMAIBrain` (sample): asks an OpenAI-compatible chat endpoint what the NPC should do next and maps
+  the JSON answer to a command. Endpoint, model, key and persona are all serialized - nothing
+  hardcoded, the key is yours to supply and never commit. Consulted on a timer or when a goal
+  completes (a few calls a minute per agent, never per frame); async; falls back to a built-in
+  wander with no key or on any error. Networking stays out of the runtime.
+- AI window tab: every agent's brain, goal, status and reason in one list, with a manual command
+  picker (MoveTo origin / Follow / Flee / Idle, per-agent or all-at-once). The dashboard view of the
+  AI - what each NPC is doing and why, controllable from the window.
+- Sandbox and Parkour scenes now use the brain-driven stack (six wanderers, one follower), so the AI
+  tab has agents to show out of the box.
+
+### Notes
+- Swapping `ScriptedAIBrain` for `LLMAIBrain` on an agent is the only change needed to put a model in
+  charge of it - the provider, the matcher and the window are identical either way.
+
+101/101 EditMode tests. Verified headless: Sandbox carries 6 AICommandProvider agents (brain +
+controller + motor each), Parkour 1. The LLM request/response path needs a live endpoint and is not
+exercised here; the scripted path and the whole architecture are.
+
 ## [1.25.0] - 2026-07-16
 
 ### Added

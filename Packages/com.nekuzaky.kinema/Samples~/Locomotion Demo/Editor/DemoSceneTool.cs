@@ -389,8 +389,12 @@ namespace Kinema.MotionMatching.Samples.Editor
             MotionEventDefinition vault, MotionEventDefinition jumpM, MotionEventDefinition jumpI, Vector3 position, Transform target)
         {
             (GameObject ai, _) = BuildBody(rig, db, vault, jumpM, jumpI, "AI Follower", position, autoVault: true);
-            var follow = ai.AddComponent<AIFollowProvider>();
-            follow.SetTarget(target);
+            // The brain-driven stack: a scripted brain issuing Follow goals, translated to locomotion
+            // by the command provider. Swap the brain for an LLMAIBrain and the same agent is
+            // model-directed with no other change - and it shows up in the window's AI tab either way.
+            var brain = ai.AddComponent<ScriptedAIBrain>();
+            DemoSceneBuilder.SetEnum(brain, "_behaviour", 2); // FollowPlayer
+            ai.AddComponent<AICommandProvider>();
             Tint(ai, new Color(1f, 0.55f, 0.4f)); // warm, to read apart from the player
         }
 
@@ -398,7 +402,8 @@ namespace Kinema.MotionMatching.Samples.Editor
             MotionEventDefinition vault, MotionEventDefinition jumpM, MotionEventDefinition jumpI, Vector3 position)
         {
             (GameObject ai, _) = BuildBody(rig, db, vault, jumpM, jumpI, "AI Wanderer", position, autoVault: false);
-            ai.AddComponent<AIWanderProvider>();
+            ai.AddComponent<ScriptedAIBrain>(); // Wander by default
+            ai.AddComponent<AICommandProvider>();
             Tint(ai, new Color(0.5f, 0.8f, 0.55f)); // green, distinct from player and follower
         }
 

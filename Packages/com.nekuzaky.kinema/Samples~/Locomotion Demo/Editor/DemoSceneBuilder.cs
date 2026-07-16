@@ -136,6 +136,17 @@ namespace Kinema.MotionMatching.Samples.Editor
             }
         }
 
+        internal static void SetEnum(Object component, string property, int index)
+        {
+            var so = new SerializedObject(component);
+            SerializedProperty prop = so.FindProperty(property);
+            if (prop != null)
+            {
+                prop.enumValueIndex = index;
+                so.ApplyModifiedPropertiesWithoutUndo();
+            }
+        }
+
         internal static void EnsureFolders()
         {
             CreateFolderIfMissing(DemoFolder, "Materials");

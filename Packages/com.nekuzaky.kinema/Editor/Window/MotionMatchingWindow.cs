@@ -12,12 +12,13 @@ namespace Kinema.MotionMatching.Editor
     {
         #region Private and Protected
 
-        private enum Tab { Overview, Database, Bake, Tags, Director, Debug, Analysis, Settings }
-        private static readonly string[] TabNames = { "Overview", "Database", "Bake", "Tags", "Director", "Debug", "Analysis", "Settings" };
+        private enum Tab { Overview, Database, Bake, Tags, Director, AI, Debug, Analysis, Settings }
+        private static readonly string[] TabNames = { "Overview", "Database", "Bake", "Tags", "Director", "AI", "Debug", "Analysis", "Settings" };
 
         private readonly TagTimelineDrawer _tagDrawer = new TagTimelineDrawer();
         private readonly AnalysisTabDrawer _analysisDrawer = new AnalysisTabDrawer();
         private readonly DirectorTabDrawer _directorDrawer = new DirectorTabDrawer();
+        private readonly AIDirectorTabDrawer _aiDrawer = new AIDirectorTabDrawer();
 
         [SerializeField] private MotionMatchingConfig _config;
         [SerializeField] private MotionMatchingDatabase _database;
@@ -59,7 +60,7 @@ namespace Kinema.MotionMatching.Editor
         private void OnInspectorUpdate()
         {
             // Keep the live tabs updating during play without hammering repaint elsewhere.
-            if ((_tab == Tab.Debug || _tab == Tab.Analysis || _tab == Tab.Director) && Application.isPlaying)
+            if ((_tab == Tab.Debug || _tab == Tab.Analysis || _tab == Tab.Director || _tab == Tab.AI) && Application.isPlaying)
                 Repaint();
         }
 
@@ -77,6 +78,7 @@ namespace Kinema.MotionMatching.Editor
                 case Tab.Bake: DrawBake(); break;
                 case Tab.Tags: DrawTags(); break;
                 case Tab.Director: _directorDrawer.Draw(_controller); break;
+                case Tab.AI: _aiDrawer.Draw(); break;
                 case Tab.Debug: DrawDebug(); break;
                 case Tab.Analysis: DrawAnalysis(); break;
                 case Tab.Settings: DrawSettings(); break;
