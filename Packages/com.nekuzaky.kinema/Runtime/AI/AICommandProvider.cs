@@ -29,6 +29,16 @@ namespace Kinema.MotionMatching
         [Tooltip("Stop when closer than this to a MoveTo/Follow goal (meters).")]
         [SerializeField, Min(0.1f)] private float _arriveDistance = 1f;
 
+        [Tooltip("Automatic: advances itself every Update. Manual: call Step(dt) yourself - fixed-step or server-driven simulation, deterministic tests. Pair it with the controller's own Tick Mode.")]
+        [SerializeField] private MotionMatchingController.TickMode _tickMode = MotionMatchingController.TickMode.Automatic;
+
+        /// <summary>How this agent is advanced. See <see cref="Step"/>.</summary>
+        public MotionMatchingController.TickMode Ticking
+        {
+            get => _tickMode;
+            set => _tickMode = value;
+        }
+
         [Tooltip("Ease speed down within this distance of the goal (meters).")]
         [SerializeField, Min(0.5f)] private float _slowRadius = 2.5f;
 
@@ -146,6 +156,36 @@ namespace Kinema.MotionMatching
 
         private void Update()
         {
+            if (_tickMode != MotionMatchingController.TickMode.Automatic) return;
+            Tick(Time.deltaTime);
+        }
+
+        /// <summary>
+        /// Advances the agent by <paramref name="dt"/> seconds - brain, command resolution, steering -
+        /// exactly as an automatic Update tick would. Mirrors
+        /// <see cref="MotionMatchingController.Step"/> and exists for the same reasons: a fixed-step
+        /// or server-authoritative sim owns its own clock, and a test that owns the clock is
+        /// deterministic. The steer is smoothed against dt, so driving it from real frame times is
+        /// what makes an agent's turn-in look the same at 30 and 144 fps - and what makes it
+        /// unreproducible in a headless test, where frames take microseconds and the smoothing never
+        /// accumulates.
+        ///
+        /// Only does anything in Manual mode; in Automatic the component already ticks itself and an
+        /// extra Step would double-advance the smoothing.
+        /// </summary>
+        public void Step(float dt)
+        {
+            if (_tickMode != MotionMatchingController.TickMode.Manual)
+            {
+                Debug.LogWarning($"[MotionMatching] '{name}': Step ignored - Tick Mode is Automatic, " +
+                                 "so the component already ticks itself. Set Tick Mode to Manual to drive it.", this);
+                return;
+            }
+            Tick(dt);
+        }
+
+        private void Tick(float dt)
+        {
             var context = new AIContext
             {
                 Position = transform.position,
@@ -170,7 +210,7 @@ namespace Kinema.MotionMatching
             }
 
             Vector3 desired = Resolve(command);
-            DesiredVelocity = _avoidObstacles ? Avoid(desired, command.Target) : desired;
+            DesiredVelocity = _avoidObstacles ? Avoid(desired, command.Target, dt) : desired;
         }
 
         private void OnDrawGizmosSelected()
@@ -242,12 +282,12 @@ namespace Kinema.MotionMatching
         /// rewrites that prediction every frame, and the search flips between clips - the same
         /// stutter a jittery input would cause. Smoothing keeps the intent legible to the search.
         /// </summary>
-        private Vector3 Avoid(Vector3 desired, Transform goalTarget)
+        private Vector3 Avoid(Vector3 desired, Transform goalTarget, float dt)
         {
             float speed = desired.magnitude;
             if (speed < 1e-3f)
             {
-                _steer = Mathf.Lerp(_steer, 0f, Damp());
+                _steer = Mathf.Lerp(_steer, 0f, Damp(dt));
                 return desired;
             }
 
@@ -272,7 +312,7 @@ namespace Kinema.MotionMatching
                 speed *= Mathf.Lerp(1f, 0.45f, 1f - centre / _probeDistance);
             }
 
-            _steer = Mathf.Lerp(_steer, target, Damp());
+            _steer = Mathf.Lerp(_steer, target, Damp(dt));
             Vector3 heading = Turn(forward, _steer * _maxSteerAngle);
 
             // Backstop. Steering is smoothed, so it can fail to come round in time - and steering
@@ -332,7 +372,7 @@ namespace Kinema.MotionMatching
                 _obstacleLayers, QueryTriggerInteraction.Ignore);
         }
 
-        private float Damp() => 1f - Mathf.Exp(-_steerSharpness * Time.deltaTime);
+        private float Damp(float dt) => 1f - Mathf.Exp(-_steerSharpness * dt);
 
         private static Vector3 Turn(Vector3 v, float degrees) => Quaternion.AngleAxis(degrees, Vector3.up) * v;
 
