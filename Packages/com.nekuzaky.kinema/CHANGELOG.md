@@ -4,6 +4,29 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.23.0] - 2026-07-16
+
+### Added
+- Demo presentation pass (`DemoPresentation`), all generated - no imported art:
+  - URP post-processing volume: ACES tonemapping, bloom, colour adjustments (exposure/contrast/
+    saturation) and vignette, written into a generated `VolumeProfile` asset, with the camera's
+    post-processing and SMAA enabled. The single biggest visual lift.
+  - Lighting: a low warm key light with soft shadows, and gradient (trilight) ambient so the shaded
+    side of the character reads as bounce light rather than a flat fill.
+  - Materials tuned as surfaces - matte concrete ground, muted-slate obstacles (no more neon cyan),
+    and a skin material on the character instead of flat white.
+
+### Notes
+- Motion fidelity (foot slide, planting) was left as-is this pass: FootLockIK is already at full
+  weight and the feet are weighted 1.4x in the bake, and the remaining tuning needs a play-mode
+  foot-slide measurement (the Analysis tab) that a headless build cannot take. The scene-view stats
+  label from v1.21 surfaces it.
+- Re-run Tools > Kinema > Demo Scene to regenerate the scene with the new look.
+
+101/101 EditMode tests. Verified headless: the volume profile persists its four overrides as
+sub-assets (the first attempt serialized them as null until each was added to the profile asset),
+the camera has post-processing on, ambient is trilight, and the character carries the skin material.
+
 ## [1.22.0] - 2026-07-16
 
 ### Added

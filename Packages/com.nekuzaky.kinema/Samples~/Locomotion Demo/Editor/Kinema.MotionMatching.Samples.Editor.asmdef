@@ -4,7 +4,9 @@
     "references": [
         "Kinema.MotionMatching.Runtime",
         "Kinema.MotionMatching.Samples",
-        "Kinema.MotionMatching.Editor"
+        "Kinema.MotionMatching.Editor",
+        "Unity.RenderPipelines.Universal.Runtime",
+        "Unity.RenderPipelines.Core.Runtime"
     ],
     "includePlatforms": [
         "Editor"

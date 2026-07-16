@@ -118,13 +118,16 @@ namespace Kinema.MotionMatching.Samples.Editor
                 Debug.LogWarning($"[Kinema] '{rig.name}' has no skinned mesh, so the character will be invisible. " +
                                  "It still animates - rebake against a rig that carries a skin.");
 
-            (Material ground, Material obstacle) = DemoSceneBuilder.CreateMaterials();
+            (Material ground, Material obstacle) = DemoPresentation.CreateMaterials();
             DemoSceneBuilder.BuildEnvironment(ground, obstacle);
             BuildTestTerrain(obstacle);
 
             GameObject character = BuildCharacter(rig, database, vaultEvent, jumpMoving, jumpIdle);
             DemoSceneBuilder.WireCamera(character.transform);
-            DemoSceneBuilder.ConfigureSun();
+
+            // Lighting, gradient ambient, URP post-processing and the character skin material -
+            // everything that lifts the scene above programmer-art, all generated, no imported assets.
+            DemoPresentation.Apply(character, Camera.main);
             Selection.activeGameObject = character;
 
             UnityEngine.SceneManagement.Scene scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
