@@ -4,6 +4,15 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.23.1] - 2026-07-16
+
+### Fixed
+- The post-processing volume referenced no profile in the saved scene, so grading did nothing
+  despite the camera having post enabled. The builder set `volume.profile` - whose getter
+  instantiates a runtime copy the scene never serializes - instead of `volume.sharedProfile`, which
+  assigns the asset. Caught by a full pre-launch verification pass; the loaded scene now resolves the
+  profile with all four overrides active.
+
 ## [1.23.0] - 2026-07-16
 
 ### Added

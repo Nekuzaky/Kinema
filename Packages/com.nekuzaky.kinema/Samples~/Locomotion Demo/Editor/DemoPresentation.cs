@@ -86,7 +86,10 @@ namespace Kinema.MotionMatching.Samples.Editor
             var volume = volumeGo.AddComponent<Volume>();
             volume.isGlobal = true;
             volume.priority = 1f;
-            volume.profile = profile;
+            // sharedProfile, not profile: the profile getter instantiates a runtime copy that the
+            // scene does not serialize, so the saved scene would reference no profile and post-
+            // processing would silently do nothing. sharedProfile assigns the asset itself.
+            volume.sharedProfile = profile;
 
             if (camera == null) return;
             camera.allowHDR = true;
