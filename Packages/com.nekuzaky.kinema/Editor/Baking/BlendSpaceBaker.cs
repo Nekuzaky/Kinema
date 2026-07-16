@@ -81,12 +81,19 @@ namespace Kinema.MotionMatching.Editor
                     if (clip != null) result.Clips.Add(clip);
                 }
 
+                result.Success = result.Clips.Count > 0;
+                if (!result.Success)
+                {
+                    result.Error = "No grid clips were produced.";
+                    return result;
+                }
+
+                // On success only: a failed report carrying "Baked 0 grid clips as transform-curve
+                // clips" is noise stacked on top of the actual error.
                 result.Warnings.Add(
                     $"Baked {result.Clips.Count} grid clips as transform-curve (Generic) clips - they play on a rig " +
                     "read as Generic, not through a Humanoid Animator. Add them to the config's clip list and rebake " +
                     "the database to make them matchable.");
-                result.Success = result.Clips.Count > 0;
-                if (!result.Success) result.Error = "No grid clips were produced.";
                 return result;
             }
             finally

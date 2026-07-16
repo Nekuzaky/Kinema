@@ -144,6 +144,11 @@ namespace Kinema.MotionMatching
 
             float lab = (b - a).magnitude;
             float lcb = (c - b).magnitude;
+            // A degenerate chain - two leg bones at the same position, from a bad retarget or a
+            // zero-scaled bone - divides by zero below, and Acos(NaN) is NaN. That NaN lands in
+            // upper.rotation and spreads to every child: the rig leaves the screen and never comes
+            // back. GroundAdaptationIK guards the identical solve; this copy did not.
+            if (lab < 1e-4f || lcb < 1e-4f) return;
             float lat = Mathf.Clamp((target - a).magnitude, 0.01f, lab + lcb - 1e-3f);
 
             // Current and desired interior angles.
@@ -156,6 +161,7 @@ namespace Kinema.MotionMatching
 
             Vector3 axis = Vector3.Cross(c - a, b - a);
             if (axis.sqrMagnitude < 1e-8f) axis = Vector3.Cross(c - a, Vector3.up);
+            if (axis.sqrMagnitude < 1e-8f) return; // fallback was degenerate too: the chain is a point.
             axis.Normalize();
 
             // Bend the knee to reach the correct chain length.

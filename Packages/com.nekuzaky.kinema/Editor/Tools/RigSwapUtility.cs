@@ -91,7 +91,7 @@ namespace Kinema.MotionMatching.Editor
         private static void RewireAnimator(GameObject character)
         {
             var animator = character.GetComponent<Animator>();
-            if (animator == null) animator = character.AddComponent<Animator>();
+            if (animator == null) animator = Undo.AddComponent<Animator>(character);
             animator.applyRootMotion = true;
 
             var controller = character.GetComponent<MotionMatchingController>();
@@ -101,11 +101,19 @@ namespace Kinema.MotionMatching.Editor
             if (prop != null)
             {
                 prop.objectReferenceValue = animator;
-                so.ApplyModifiedPropertiesWithoutUndo();
+                so.ApplyModifiedProperties();
             }
         }
 
-        /// <summary>Anything in the scene holding the old transform (follow cameras, AI targets) follows the new one.</summary>
+        /// <summary>
+        /// Anything in the scene holding the old transform (follow cameras, AI targets) follows the
+        /// new one.
+        ///
+        /// Recorded for undo, unlike the rest of the swap's bookkeeping. Ctrl+Z restores the old
+        /// character and destroys the replacement; if these repoints were not undone with it, every
+        /// camera and AI target would still be aimed at the destroyed replacement - a scene worse off
+        /// than before the swap, and one the user cannot get back by hand.
+        /// </summary>
         private static void RetargetReferences(Transform oldTransform, Transform newTransform)
         {
             foreach (MonoBehaviour behaviour in Object.FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None))
@@ -122,7 +130,7 @@ namespace Kinema.MotionMatching.Editor
                     prop.objectReferenceValue = newTransform;
                     changed = true;
                 }
-                if (changed) so.ApplyModifiedPropertiesWithoutUndo();
+                if (changed) so.ApplyModifiedProperties();
             }
         }
 

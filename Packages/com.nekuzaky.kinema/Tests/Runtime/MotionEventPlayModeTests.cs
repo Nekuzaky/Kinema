@@ -89,11 +89,15 @@ namespace Kinema.MotionMatching.Tests
         }
 
         [Test]
-        public void RootMotion_StaysBoundedUnderConstantIntent()
+        public void TickingUnderConstantIntent_NeverDivergesOrGoesNaN()
         {
-            // Regression guard on the warp/stride machinery as a whole: with a modest constant
-            // intent, the character must not teleport or diverge. The synthetic clip covers 1 m in
-            // 3 s, so even with stride warping the plausible travel over 2 s is well under 5 m.
+            // Named for what it can actually prove. This rig has no source of root motion at all:
+            // its clips deliberately animate a child bone and never the root (a root curve stays
+            // graph-owned and stomps the event warp's transform writes, see PlayModeTestRig), and
+            // nothing else here drives the transform. So it cannot assert that the character travels
+            // - only that ticking the search, stride warp and clocks for two seconds leaves the
+            // transform sane. Asserting travel here would need a rig with an Animator applying root
+            // motion, which is the same Humanoid setup the IK gaps in TODO.md are waiting on.
             _rig.Controller.DesiredVelocity = new Vector3(0f, 0f, 1f);
             Vector3 start = _rig.GameObject.transform.position;
 

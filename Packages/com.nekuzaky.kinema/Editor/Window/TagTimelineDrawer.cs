@@ -58,19 +58,31 @@ namespace Kinema.MotionMatching.Editor
             AnimationClip clip = clips[_clipIndex];
             if (clip == null) return;
 
-            SerializedProperty trackProp = FindOrCreateTrack(config, serialized, clip);
-            SerializedProperty ranges = trackProp.FindPropertyRelative("Ranges");
+            // Look up only. Creating the track here - on every repaint, for whatever clip the popup
+            // happens to show - wrote an empty ClipTagTrack into the config and marked it dirty just
+            // for browsing, so a config nobody edited came back as a diff. The track is created when
+            // the user actually adds a range, below.
+            SerializedProperty trackProp = FindTrack(serialized, clip);
+            SerializedProperty ranges = trackProp?.FindPropertyRelative("Ranges");
 
             using (MotionMatchingStyles.BeginSection($"Timeline — {clip.name} ({clip.length:F2}s)"))
             {
-                DrawLanes(config, ranges, clip.length);
-                EditorGUILayout.Space(6);
-                _scroll = EditorGUILayout.BeginScrollView(_scroll, GUILayout.MaxHeight(220));
-                DrawRangeList(config, ranges, clip.length);
-                EditorGUILayout.EndScrollView();
+                if (ranges != null)
+                {
+                    DrawLanes(config, ranges, clip.length);
+                    EditorGUILayout.Space(6);
+                    _scroll = EditorGUILayout.BeginScrollView(_scroll, GUILayout.MaxHeight(220));
+                    DrawRangeList(config, ranges, clip.length);
+                    EditorGUILayout.EndScrollView();
+                }
+                else
+                {
+                    MotionMatchingStyles.HelpRow("No tag ranges on this clip yet.", MessageType.None);
+                }
 
                 if (GUILayout.Button("Add Range"))
                 {
+                    ranges ??= CreateTrack(serialized, clip).FindPropertyRelative("Ranges");
                     ranges.InsertArrayElementAtIndex(ranges.arraySize);
                     SerializedProperty r = ranges.GetArrayElementAtIndex(ranges.arraySize - 1);
                     r.FindPropertyRelative("TagIndex").intValue = 0;
@@ -86,7 +98,9 @@ namespace Kinema.MotionMatching.Editor
 
         #region Tools and Utilities
 
-        private static SerializedProperty FindOrCreateTrack(MotionMatchingConfig config, SerializedObject serialized, AnimationClip clip)
+        /// <summary>This clip's tag track, or null when it has none. Pure lookup - safe to call from
+        /// a repaint.</summary>
+        private static SerializedProperty FindTrack(SerializedObject serialized, AnimationClip clip)
         {
             SerializedProperty tracks = serialized.FindProperty("_tagTracks");
             for (int i = 0; i < tracks.arraySize; i++)
@@ -95,6 +109,14 @@ namespace Kinema.MotionMatching.Editor
                 if (t.FindPropertyRelative("Clip").objectReferenceValue == clip)
                     return t;
             }
+            return null;
+        }
+
+        /// <summary>Adds an empty track for this clip. Call only from an actual user edit - it
+        /// dirties the config.</summary>
+        private static SerializedProperty CreateTrack(SerializedObject serialized, AnimationClip clip)
+        {
+            SerializedProperty tracks = serialized.FindProperty("_tagTracks");
             tracks.InsertArrayElementAtIndex(tracks.arraySize);
             SerializedProperty created = tracks.GetArrayElementAtIndex(tracks.arraySize - 1);
             created.FindPropertyRelative("Clip").objectReferenceValue = clip;
@@ -144,11 +166,23 @@ namespace Kinema.MotionMatching.Editor
 
                 using (new EditorGUILayout.HorizontalScope())
                 {
-                    tagIndex.intValue = EditorGUILayout.Popup(tagIndex.intValue, tagNames, GUILayout.Width(110));
+                    // Written back only on an actual edit. Assigning these every repaint pushed the
+                    // user's ranges through the clamp continuously: reimport a clip shorter and
+                    // merely opening this tab silently truncated every range past the new length,
+                    // dirtying the asset and pushing an undo step for an edit nobody made. Authored
+                    // data is not the drawer's to rewrite while it is being looked at.
+                    EditorGUI.BeginChangeCheck();
+                    int newTag = EditorGUILayout.Popup(tagIndex.intValue, tagNames, GUILayout.Width(110));
                     GUILayout.Label("from", MotionMatchingStyles.KeyLabel, GUILayout.Width(32));
-                    start.floatValue = Mathf.Clamp(EditorGUILayout.FloatField(start.floatValue, GUILayout.Width(56)), 0f, clipLength);
+                    float newStart = EditorGUILayout.FloatField(start.floatValue, GUILayout.Width(56));
                     GUILayout.Label("to", MotionMatchingStyles.KeyLabel, GUILayout.Width(18));
-                    end.floatValue = Mathf.Clamp(EditorGUILayout.FloatField(end.floatValue, GUILayout.Width(56)), start.floatValue, clipLength);
+                    float newEnd = EditorGUILayout.FloatField(end.floatValue, GUILayout.Width(56));
+                    if (EditorGUI.EndChangeCheck())
+                    {
+                        tagIndex.intValue = newTag;
+                        start.floatValue = Mathf.Clamp(newStart, 0f, clipLength);
+                        end.floatValue = Mathf.Clamp(newEnd, start.floatValue, clipLength);
+                    }
                     GUILayout.FlexibleSpace();
                     if (GUILayout.Button("X", EditorStyles.miniButton, GUILayout.Width(22)))
                     {
