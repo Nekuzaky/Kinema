@@ -4,6 +4,18 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.20.2] - 2026-07-16
+
+### Fixed
+- Demo character jittered while ghosts stayed smooth - the reporter's differential, and the thing
+  that identified it: same rig, same database, same matcher, so the cause had to be what the player
+  has and a ghost does not. That is the collision motor. Its `CharacterController` kept Unity's
+  default `skinWidth` (0.08), tuned for the default 0.5 radius; on this 0.3-radius capsule that is
+  27% of the radius, which the CharacterController docs name as a cause of jitter. The motor also
+  pushes the body down every frame to stay grounded, so it settled by oscillating inside that skin.
+  Skin width is now 10% of the radius and `minMoveDistance` is 0 (its documented anti-jitter value).
+  Ghosts were never affected: no motor, root motion goes straight onto the transform.
+
 ## [1.20.1] - 2026-07-16
 
 ### Fixed

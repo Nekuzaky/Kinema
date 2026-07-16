@@ -217,6 +217,14 @@ namespace Kinema.MotionMatching.Samples.Editor
             cc.radius = 0.3f;
             cc.height = 1.8f;
 
+            // Unity's defaults are tuned for the default 0.5 radius: left alone on a 0.3-radius
+            // capsule the skin width is 27% of the radius, which its own docs call out as a cause of
+            // jitter. The motor also pushes down constantly to stay grounded, so the body ends up
+            // oscillating inside that skin - visible as a character that never quite settles, while
+            // ghosts (no motor, root motion straight onto the transform) stay smooth.
+            cc.skinWidth = cc.radius * 0.1f;
+            cc.minMoveDistance = 0f; // "keep at 0 to avoid jittering" - CharacterController docs.
+
             var animator = character.GetComponent<Animator>();
             if (animator == null) animator = character.AddComponent<Animator>();
             animator.applyRootMotion = true;
