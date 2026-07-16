@@ -4,6 +4,43 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.30.0] - 2026-07-16
+
+The clip-change brake never worked. This is the bug behind every "it moves on its own", "not fluid"
+and "robotic" report so far.
+
+### Fixed
+- **`_clipChangeCost` was an absolute constant in a cost space that is neither normalized nor
+  bounded.** It is capped at 1.0 by its own `Range`, while real costs on the demo run 5 (a satisfied
+  query) to 200 (one asking for a speed the bake barely holds). At 0.25 it was a 4% brake at best and
+  a 0.1% brake exactly when flicker was worst - its tooltip promised "raise to reduce clip flicker",
+  which it could not do at any value. It is now a **fraction of what continuing the current clip
+  costs**, so it means the same thing at every scale.
+
+  Measured on the demo before the fix: **93% of searches jumped** - against a stats label whose own
+  comment reads "a calm character sits near 0". Since `CharacterMotor` moves the body by the clip's
+  root motion and nothing else, that churn walked an idle character off at **1.2 m/s with no input
+  touched** (`speed 1.2 / 0.0 m/s` on the label), with foot slide at 0.68-1.47 m/s. It also explains
+  the long-standing report that ghosts looked fluid while the player did not: a ghost replays a
+  recorded frame sequence, so it never searches, so it cannot thrash.
+
+  Default raised 0.1 -> 0.25 now that the value can brake anything. Scenes carrying a serialized
+  0.25 get the fix without rebaking or regenerating.
+- `ScriptedAIBrain._runScale` defaulted to 1.0 - the provider's top speed, which is itself the edge
+  of what the bake covers. A player only touches that edge in bursts; an agent chasing a far goal sat
+  there permanently and starved the search the whole time. Measured: the follower's cost hit **202
+  (trajectory 159)** while sprinting and fell to **8** the moment it closed in and slowed, and it was
+  picking crouch and jump clips to run with. Now 0.8.
+- AI agents ran off ledges. The feelers are horizontal rays, so a hole in the floor has nothing to
+  hit - obstacle avoidance reported a clear path into a gap *because* the gap was empty. The ground
+  ahead is now probed too (`_stopAtLedges`, `_groundCheckAhead`, `_ledgeDrop`), and a missing floor
+  reads as a wall at the same distance so the existing steering rounds it. Stopping dead instead
+  would strand the agent: a brain only re-picks on reaching a goal, so one frozen at an edge stays
+  frozen. A hard stop remains as a backstop, since smoothed steering can fail to come round in time.
+
+  Note: this stops an agent falling in; it does not let it cross. Jumping a gap is a capability the
+  AI does not have - the jump events are player-triggered.
+
 ## [1.29.0] - 2026-07-16
 
 ### Fixed

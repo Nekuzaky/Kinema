@@ -33,8 +33,15 @@ namespace Kinema.MotionMatching
         [Tooltip("Speed asked for when strolling in (0..1 of the agent's max speed).")]
         [SerializeField, Range(0f, 1f)] private float _walkScale = 0.35f;
 
-        [Tooltip("Speed asked for when the goal is far (0..1 of the agent's max speed).")]
-        [SerializeField, Range(0f, 1f)] private float _runScale = 1f;
+        // 0.8, not 1.0. Full scale means the provider's top speed, which is itself the fastest the
+        // bake covers - the edge of the data, where only a few percent of frames are within reach.
+        // A player only touches that edge in bursts; an agent chasing a far goal would sit there
+        // permanently, and the search starves the whole time. Measured on the demo at 1.0: the
+        // follower's cost hit 202 (trajectory 159) while it sprinted, and fell to 8 the moment it
+        // closed in and slowed down. It was picking crouch and jump clips to run with.
+        [Tooltip("Speed asked for when the goal is far (0..1 of the agent's max speed). Keep it off " +
+                 "1.0: the top of the range is the edge of what the bake covers.")]
+        [SerializeField, Range(0f, 1f)] private float _runScale = 0.8f;
 
         [Tooltip("Beyond this distance from the goal the agent runs; inside it, it eases to a walk.")]
         [SerializeField, Min(0.5f)] private float _runDistance = 6f;

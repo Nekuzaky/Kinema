@@ -63,6 +63,16 @@ namespace Kinema.MotionMatching
                  "(degrees). Match the CharacterController's Slope Limit.")]
         [SerializeField, Range(0f, 89f)] private float _walkableSlopeLimit = 45f;
 
+        [Tooltip("Stop at ledges instead of running off them. The feelers only see walls - a hole in " +
+                 "the floor is invisible to a horizontal ray - so the ground ahead is probed too.")]
+        [SerializeField] private bool _stopAtLedges = true;
+
+        [Tooltip("How far ahead to check that there is still floor (meters).")]
+        [SerializeField, Min(0.2f)] private float _groundCheckAhead = 1.2f;
+
+        [Tooltip("A drop deeper than this counts as a ledge, not a step down (meters).")]
+        [SerializeField, Min(0.2f)] private float _ledgeDrop = 1.5f;
+
         [Tooltip("Which layers count as obstacles.")]
         [SerializeField] private LayerMask _obstacleLayers = ~0;
 
@@ -254,7 +264,14 @@ namespace Kinema.MotionMatching
             }
 
             _steer = Mathf.Lerp(_steer, target, Damp());
-            return Turn(forward, _steer * _maxSteerAngle) * speed;
+            Vector3 heading = Turn(forward, _steer * _maxSteerAngle);
+
+            // Backstop. Steering is smoothed, so it can fail to come round in time - and steering
+            // away from a wall can itself aim the agent at a drop. Refusing the step is the last
+            // thing between a chasing agent and the bottom of a gap.
+            if (_stopAtLedges && !HasFloorAt(heading, _groundCheckAhead)) return Vector3.zero;
+
+            return heading * speed;
         }
 
         /// <summary>
@@ -272,21 +289,38 @@ namespace Kinema.MotionMatching
         /// closer than the feelers reach, so treating it as an obstacle would make the agent swerve
         /// away from the very target it is closing on, and orbit it forever.</item>
         /// </list>
+        /// A missing floor blocks it just as a wall does. Nothing else would: these are horizontal
+        /// rays, and a hole has nothing in it to hit - so obstacle avoidance alone reports a clear
+        /// path into a gap precisely because the gap is empty.
         /// </summary>
         private float Probe(Vector3 direction, Transform goalTarget)
         {
             Vector3 origin = transform.position + Vector3.up * ProbeHeight;
+            float wall = _probeDistance;
 
-            if (!Physics.Raycast(origin, direction, out RaycastHit hit, _probeDistance,
-                    _obstacleLayers, QueryTriggerInteraction.Ignore))
-                return _probeDistance;
+            if (Physics.Raycast(origin, direction, out RaycastHit hit, _probeDistance,
+                    _obstacleLayers, QueryTriggerInteraction.Ignore)
+                && !hit.collider.transform.IsChildOf(transform)
+                && !(goalTarget != null && hit.collider.transform.IsChildOf(goalTarget))
+                && hit.collider.bounds.max.y - transform.position.y > _passableHeight
+                && Vector3.Angle(hit.normal, Vector3.up) > _walkableSlopeLimit)
+                wall = hit.distance;
 
-            if (hit.collider.transform.IsChildOf(transform)) return _probeDistance;
-            if (goalTarget != null && hit.collider.transform.IsChildOf(goalTarget)) return _probeDistance;
-            if (hit.collider.bounds.max.y - transform.position.y <= _passableHeight) return _probeDistance;
-            if (Vector3.Angle(hit.normal, Vector3.up) <= _walkableSlopeLimit) return _probeDistance;
+            // A missing floor reads exactly like a wall at the same distance, so the steering above
+            // rounds a ledge the same way it rounds a crate. Stopping dead at one instead would
+            // strand the agent: a brain only re-picks when it reaches a goal, so an agent frozen at
+            // an edge stays frozen for good.
+            if (_stopAtLedges && _groundCheckAhead < wall && !HasFloorAt(direction, _groundCheckAhead))
+                wall = _groundCheckAhead;
 
-            return hit.distance;
+            return wall;
+        }
+
+        private bool HasFloorAt(Vector3 direction, float distance)
+        {
+            Vector3 probe = transform.position + Vector3.up * 0.1f + direction * distance;
+            return Physics.Raycast(probe, Vector3.down, _ledgeDrop + 0.1f,
+                _obstacleLayers, QueryTriggerInteraction.Ignore);
         }
 
         private float Damp() => 1f - Mathf.Exp(-_steerSharpness * Time.deltaTime);

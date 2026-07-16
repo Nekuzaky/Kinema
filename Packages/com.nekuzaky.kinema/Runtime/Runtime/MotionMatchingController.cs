@@ -44,8 +44,10 @@ namespace Kinema.MotionMatching
         [Tooltip("Candidates within this many seconds of the current frame (same clip) count as 'keep playing'.")]
         [SerializeField, Range(0f, 0.3f)] private float _continuityWindow = 0.12f;
 
-        [Tooltip("Extra cost added to candidates from a different clip. Raise to reduce clip flicker; lower for snappier switching.")]
-        [SerializeField, Range(0f, 1f)] private float _clipChangeCost = 0.1f;
+        [Tooltip("Penalty on candidates from a different clip, as a fraction of what continuing the " +
+                 "current one costs. 0.25 = only leave a clip for something 25% better. Raise to " +
+                 "reduce clip flicker; lower for snappier switching.")]
+        [SerializeField, Range(0f, 1f)] private float _clipChangeCost = 0.25f;
 
         public enum TransitionMode
         {
@@ -922,8 +924,16 @@ namespace Kinema.MotionMatching
             if (continuationCost >= float.MaxValue) return true; // current clip has nowhere to continue.
 
             // Penalize crossing into a different clip so the character keeps its rhythm.
+            //
+            // As a FRACTION of what continuing costs, not a constant. The cost space is data-driven
+            // and unbounded - a satisfied query sits near 5, one asking for a speed the bake barely
+            // holds hits 200 - so a constant is 5% of the first and 0.1% of the second: it brakes
+            // nothing exactly when flicker is worst. Measured on the demo before this: 93% of
+            // searches jumped, and since the motor moves the body by the clip's root motion, that
+            // churn walked an idle character off at 1.2 m/s with no input touched.
             float candidateCost = result.TotalCost;
-            if (candidate.ClipIndex != _slotClipIndex[_activeSlot]) candidateCost += _clipChangeCost;
+            if (candidate.ClipIndex != _slotClipIndex[_activeSlot])
+                candidateCost += continuationCost * _clipChangeCost;
             return candidateCost <= continuationCost * (1f - _jumpImprovementThreshold);
         }
 
