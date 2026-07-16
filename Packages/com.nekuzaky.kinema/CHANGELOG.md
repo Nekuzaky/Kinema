@@ -4,6 +4,26 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.0] - 2026-07-16
+
+### Added
+- Scene-view gizmos overhauled: the desired and candidate trajectories now draw as flat arrows on
+  the ground with facing arrowheads at each sample (a route on the floor, not a ribbon at hip
+  height), plus two velocity arrows from the character - actual (green) vs desired (cyan) - whose
+  gap is the responsiveness at a glance.
+- Scene-view stats label above the character (editor-only, stripped from builds): current clip and
+  frame, speed vs requested, stride warp, cost split (trajectory vs pose), jump rate, and foot slide
+  when a Motion Quality Probe is present. The label turns orange on a jump frame. This is the live
+  read the in-game overlay used to show, now drawn like a gizmo so the game view stays clean.
+
+### Changed
+- Demo weights are trajectory-dominant (TrajectoryPosition 1.6, TrajectoryDirection 1.3). The
+  default pose half slightly outweighs the trajectory half; on a mostly-idle mocap set that let a
+  momentarily-slow pose pull the search into the large idle basin while forward was held down - the
+  character stuttered idle/walk/idle. Weighting intent over the exact current pose keeps the walk
+  while moving. Demo-only, applied by the scene builder; re-run Tools > Kinema > Demo Scene.
+- Welcome popup opens with "Thanks for using Kinema Motion Matching" and a one-line sponsor note.
+
 ## [1.20.3] - 2026-07-16
 
 ### Fixed

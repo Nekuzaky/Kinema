@@ -261,6 +261,14 @@ namespace Kinema.MotionMatching.Samples.Editor
             // to break the foot lock. A firmer clip-change cost trades a little responsiveness for
             // feet that stay put - which is what reads as real.
             DemoSceneBuilder.SetFloat(controller, "_clipChangeCost", 0.25f);
+
+            // Trajectory-dominant weights. The default has the pose half (bone pos/vel + root vel)
+            // slightly outweighing the trajectory half; on a mostly-idle mocap set that lets a
+            // momentarily-slow pose pull the search into the huge idle basin while the player is
+            // still holding forward - the character stutters idle/walk/idle. Weighting where the
+            // player wants to go over the exact current pose keeps intent in charge while moving.
+            DemoSceneBuilder.SetFloat(controller, "_weights.TrajectoryPosition", 1.6f);
+            DemoSceneBuilder.SetFloat(controller, "_weights.TrajectoryDirection", 1.3f);
             PrefabUtility.RecordPrefabInstancePropertyModifications(controller);
 
             return character;

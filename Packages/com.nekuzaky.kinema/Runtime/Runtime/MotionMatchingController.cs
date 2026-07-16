@@ -292,6 +292,9 @@ namespace Kinema.MotionMatching
         // Coverage telemetry: which frames the matcher actually reaches for.
         private int[] _frameUsage;
         private int _totalSearches, _totalJumps;
+#if UNITY_EDITOR
+        private MotionQualityProbe _probe; // scene-view stats label only
+#endif
         private float _costSum;
         private float _currentStrideWarp = 1f;
 
@@ -1295,9 +1298,62 @@ namespace Kinema.MotionMatching
         private void DrawDebugGizmos()
         {
             CharacterSpace space = CharacterSpace.FromTransform(transform);
-            DrawTrajectory(space, _debug.DesiredTrajectory, _desiredTrajectoryColor);
-            DrawTrajectory(space, _debug.CandidateTrajectory, _candidateTrajectoryColor);
+
+            // Ground plane the arrows sit on: the character's feet, not the root pivot.
+            Vector3 ground = new Vector3(transform.position.x, transform.position.y + 0.02f, transform.position.z);
+
+            DrawTrajectory(space, ground, _debug.DesiredTrajectory, _desiredTrajectoryColor);
+            DrawTrajectory(space, ground, _debug.CandidateTrajectory, _candidateTrajectoryColor);
             DrawBones(space, _candidateBones, _boneColor);
+
+            // Current velocity (what the body is actually doing) vs desired (what was asked). The gap
+            // between these two arrows is the responsiveness the matcher is delivering, at a glance.
+            Vector3 desired = _locomotion != null ? _locomotion.DesiredVelocity : _desiredVelocity;
+            DrawGroundArrow(ground, ground + Flatten(_measuredVelocity) * 0.35f, _boneColor, 0.12f);
+            DrawGroundArrow(ground, ground + Flatten(desired) * 0.35f, _desiredTrajectoryColor, 0.12f);
+
+            DrawStatsLabel(ground, desired);
+        }
+
+        /// <summary>
+        /// Scene-view stats panel above the character - the live read the game view no longer shows
+        /// (the overlay was removed to keep it clean), drawn as an editor label so it never ships in
+        /// a build. Editor-only: Handles does not exist at runtime.
+        /// </summary>
+        [System.Diagnostics.Conditional("UNITY_EDITOR")]
+        private void DrawStatsLabel(Vector3 ground, Vector3 desired)
+        {
+#if UNITY_EDITOR
+            if (_probe == null) _probe = GetComponent<MotionQualityProbe>();
+
+            float speed = Flatten(_measuredVelocity).magnitude;
+            float wanted = Flatten(desired).magnitude;
+            var text = new System.Text.StringBuilder();
+            text.AppendLine($"<b>{_debug.SelectedClipName}</b>  f{_debug.SelectedFrame}");
+            text.AppendLine($"speed {speed:F1} / {wanted:F1} m/s   warp {_currentStrideWarp:F2}x");
+            text.AppendLine($"cost {_debug.TotalCost:F2}  (traj {_debug.TrajectoryCost:F2} · pose {_debug.PoseCost:F2})");
+            // Jump rate as a fraction of searches: needs no time base and is the flicker read - a calm
+            // character sits near 0, a stuttering one climbs.
+            float jumpRate = _totalSearches > 0 ? 100f * _totalJumps / _totalSearches : 0f;
+            text.Append($"jump rate {jumpRate:F0}%");
+            if (_probe != null) text.Append($"   foot slide {_probe.FootSlideRate:F3} m/s");
+
+            var style = new GUIStyle
+            {
+                richText = true,
+                fontSize = 11,
+                normal = { textColor = _debug.DidJump ? _candidateTrajectoryColor : Color.white },
+                padding = new RectOffset(6, 6, 4, 4)
+            };
+            UnityEditor.Handles.BeginGUI();
+            Vector2 screen = UnityEditor.HandleUtility.WorldToGUIPoint(ground + Vector3.up * 2.1f);
+            var content = new GUIContent(text.ToString());
+            Vector2 size = style.CalcSize(content);
+            var rect = new Rect(screen.x - size.x * 0.5f, screen.y - size.y, size.x, size.y);
+            UnityEditor.EditorGUI.DrawRect(rect, new Color(0f, 0f, 0f, 0.55f));
+            GUI.Label(rect, content, style);
+            UnityEditor.Handles.EndGUI();
+#endif
         }
 
         private static void DrawBones(CharacterSpace space, Vector3[] localBones, Color color)
@@ -1308,20 +1364,52 @@ namespace Kinema.MotionMatching
                 Gizmos.DrawWireSphere(space.ToWorldOffset3D(localBones[i]), 0.06f);
         }
 
-        private static void DrawTrajectory(CharacterSpace space, TrajectorySample[] samples, Color color)
+        private static void DrawTrajectory(CharacterSpace space, Vector3 ground, TrajectorySample[] samples, Color color)
         {
             if (samples == null) return;
             Gizmos.color = color;
-            Vector3 previous = space.Origin;
+
+            Vector3 previous = ground;
             for (int i = 0; i < samples.Length; i++)
             {
-                Vector3 point = space.ToWorldPoint(samples[i].Position);
+                // Flatten each sample onto the ground plane so the whole path reads as a route drawn
+                // on the floor, not a ribbon floating at hip height.
+                Vector3 local = space.ToWorldPoint(samples[i].Position);
+                Vector3 point = new Vector3(local.x, ground.y, local.z);
+
                 Gizmos.DrawLine(previous, point);
-                Gizmos.DrawSphere(point, 0.04f);
+                Gizmos.DrawSphere(point, 0.03f);
+
+                // A facing arrowhead at each sample: direction is half the query, and without it the
+                // path shows where the character goes but not which way it will be looking there.
                 Vector3 dir = space.ToWorldDirection(samples[i].Direction);
-                Gizmos.DrawLine(point, point + dir * 0.25f);
+                dir.y = 0f;
+                if (dir.sqrMagnitude > 1e-5f)
+                    DrawArrowHead(point, dir.normalized, 0.08f);
+
                 previous = point;
             }
+        }
+
+        private static Vector3 Flatten(Vector3 v) { v.y = 0f; return v; }
+
+        /// <summary>A flat arrow on the ground: shaft plus a V head, so direction reads without a 3D pivot.</summary>
+        private static void DrawGroundArrow(Vector3 from, Vector3 to, Color color, float headSize)
+        {
+            Gizmos.color = color;
+            Vector3 flat = to - from; flat.y = 0f;
+            if (flat.sqrMagnitude < 1e-5f) { Gizmos.DrawSphere(from, 0.03f); return; }
+
+            Gizmos.DrawLine(from, to);
+            DrawArrowHead(to, flat.normalized, headSize);
+        }
+
+        private static void DrawArrowHead(Vector3 tip, Vector3 dir, float size)
+        {
+            Vector3 side = Vector3.Cross(dir, Vector3.up) * (size * 0.5f);
+            Vector3 back = tip - dir * size;
+            Gizmos.DrawLine(tip, back + side);
+            Gizmos.DrawLine(tip, back - side);
         }
 
         #endregion

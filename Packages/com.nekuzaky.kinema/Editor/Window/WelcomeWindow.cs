@@ -79,14 +79,15 @@ namespace Kinema.MotionMatching.Editor
             EnsureStyles();
 
             GUILayout.Space(10);
-            GUILayout.Label("Kinema Motion Matching", _title);
+            GUILayout.Label("Thanks for using Kinema Motion Matching", _title);
             if (!string.IsNullOrEmpty(_version))
                 GUILayout.Label("v" + _version, EditorStyles.miniLabel);
 
             GUILayout.Space(8);
             GUILayout.Label(
                 "Data-driven motion matching locomotion for Unity: bake AnimationClips into a " +
-                "searchable database, then match, blend and debug them live from one editor window.",
+                "searchable database, then match, blend and debug them live from one editor window.\n\n" +
+                "Built and maintained by one developer - if it saves you time, a sponsorship keeps it moving.",
                 _body);
 
             GUILayout.Space(12);
