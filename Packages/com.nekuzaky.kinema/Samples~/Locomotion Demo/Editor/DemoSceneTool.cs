@@ -406,6 +406,7 @@ namespace Kinema.MotionMatching.Samples.Editor
             DemoSceneBuilder.SetEnum(brain, "_behaviour", 2); // FollowPlayer
             var provider = ai.AddComponent<AICommandProvider>();
             AddSearchLOD(ai);
+            AddTagFilter(ai, db);
             // This one auto-vaults, so anything inside the vault window must not read as an obstacle:
             // 1.2 clears the trigger's 1.15 ceiling. Otherwise avoidance steers it around every wall
             // it was built to vault, and the chase never shows a vault at all.
@@ -420,7 +421,22 @@ namespace Kinema.MotionMatching.Samples.Editor
             ai.AddComponent<ScriptedAIBrain>(); // Wander by default
             ai.AddComponent<AICommandProvider>();
             AddSearchLOD(ai);
+            AddTagFilter(ai, db);
             Tint(ai, new Color(0.5f, 0.8f, 0.55f)); // green, distinct from player and follower
+        }
+
+        /// <summary>
+        /// Narrows what an AI may pick to what it can plausibly be doing. The player gets this from
+        /// its StanceTagController, which has to exist anyway because crouching is a thing the player
+        /// asks for; an AI has no such component and so searched the entire database - crouch clips
+        /// and jump clips included, both of which are perfectly good matches for walking as far as
+        /// the cost function is concerned. That is where "the AI does random things" came from: it
+        /// was crouch-walking and running on jump clips because nobody had ruled them out.
+        /// </summary>
+        private static void AddTagFilter(GameObject agent, MotionMatchingDatabase database)
+        {
+            if (!database.HasTags) return; // nothing to filter on; the component would only warn.
+            agent.AddComponent<LocomotionTagFilter>();
         }
 
         /// <summary>

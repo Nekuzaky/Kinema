@@ -103,6 +103,12 @@ namespace Kinema.MotionMatching.Samples
 
             // Standing: forbid crouched frames. Crouching: demand them. Airborne is always out.
             _controller.RequiredTags = crouch ? _crouchMask : 0ul;
+
+            // Rebuilt from this component's own two masks rather than or-ed into whatever was there:
+            // crouch has to be able to leave the excluded set when the player crouches, and an
+            // accumulating mask could never let go of it. Anything else owning exclusions on the same
+            // character would be clobbered here - which is why an AI gets a LocomotionTagFilter and
+            // not this.
             _controller.ExcludedTags = _excludedMask | (crouch ? 0ul : _crouchMask);
 
             if (!_resizeCollider || _characterController == null) return;
