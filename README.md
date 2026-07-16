@@ -63,6 +63,8 @@ Mecanim interop.
   measurements; see the benchmark). Built on `MotionMatcher.ScheduleSearch`/`CompleteSearch`.
 - `GaitClassifier`: proposes idle/walk/run/turn tag ranges from the baked motion itself
   (`Tools > Kinema > Log Auto-Tag Suggestions`), no naming conventions involved.
+- Manual ticking: set `TickMode.Manual` and call `Step(dt)` to own the clock - fixed-step or
+  server-authoritative simulation, and deterministic tests. Automatic (self-ticking) is the default.
 
 **Editor window** (`Tools > Kinema > Motion Matching Window`, Ctrl+Shift+M)
 - Overview / Database / Bake / Tags / Director / Debug / Analysis / Settings.
@@ -138,7 +140,9 @@ Unity -batchmode -projectPath . -runTests -testPlatform EditMode -testResults re
 ```
 
 `Tests/Runtime` holds PlayMode tests that drive a real controller (live PlayableGraph, real
-searches) on a synthetic database - run with `-testPlatform PlayMode` (drop `-nographics`).
+searches) on a synthetic database - run with `-testPlatform PlayMode` (drop `-nographics`). They own
+the clock through `TickMode.Manual` + `Step(dt)` rather than yielding frames, so each test's timeline
+is exactly the steps it takes: plain `[Test]`, no coroutines, no frame-pacing dependency.
 `Assets/StandaloneSmokeTest/` builds a headless Win64 player that ticks a controller for 60 real
 frames and prints a `[KinemaSmoke]` verdict.
 

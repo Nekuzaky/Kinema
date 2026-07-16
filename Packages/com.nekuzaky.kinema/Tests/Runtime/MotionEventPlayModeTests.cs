@@ -1,79 +1,45 @@
-using System.Collections;
 using NUnit.Framework;
 using UnityEngine;
-using UnityEngine.TestTools;
 
 namespace Kinema.MotionMatching.Tests
 {
     /// <summary>
-    /// PlayMode coverage for motion events (TODO.md follow-up: "event root-warping lands on its
-    /// target"): plays a real event through <see cref="MotionMatchingController.PlayEvent"/> and
-    /// asserts the warp actually delivers the root to the requested position/yaw by contact time,
-    /// that the event ends on its own, and that matching resumes. Uses
-    /// <see cref="Time.captureDeltaTime"/> for a fixed, deterministic timestep - batchmode frame
-    /// times are otherwise sub-millisecond and the warp math is time-based.
+    /// PlayMode coverage for motion events: plays a real event through
+    /// <see cref="MotionMatchingController.PlayEvent"/> and asserts the root warp actually delivers
+    /// the character to the requested position/yaw by contact time, that the event ends on its own,
+    /// and that matching resumes. Manual ticking at a fixed timestep - the warp math is time-based,
+    /// and owning the clock keeps the assertions exact without coroutines.
     /// </summary>
     public sealed class MotionEventPlayModeTests
     {
-        private const int Fps = 10;
-        private const int FrameCount = 30;
-        private const float FixedDt = 1f / 30f;
-
-        private GameObject _go;
-        private MotionMatchingController _controller;
-        private MotionMatchingDatabase _db;
-        private AnimationClip _locomotionClip;
+        private PlayModeTestRig _rig;
         private AnimationClip _eventClip;
         private MotionEventDefinition _eventDefinition;
 
-        [UnitySetUp]
-        public IEnumerator SetUp()
+        [SetUp]
+        public void SetUp()
         {
-            Time.captureDeltaTime = FixedDt;
+            _rig = PlayModeTestRig.Create("EventTestCharacter");
 
-            // Neither clip may animate the ROOT transform: any root curve on any clip connected to
-            // the two-slot mixer keeps that property graph-owned even at weight 0, and every
-            // Evaluate then stomps the event warp's transform writes back to the curve value.
-            // Real locomotion clips carry root motion through the Animator, not root curves.
-            _locomotionClip = new AnimationClip { name = "SyntheticWalk", wrapMode = WrapMode.Loop };
-            _locomotionClip.SetCurve("Foot", typeof(Transform), "localPosition.z", AnimationCurve.Linear(0f, 0f, 3f, 1f));
-            _db = CreateDatabase(_locomotionClip);
-
-            // The event clip must NOT animate the root transform: the graph re-evaluates the clip
-            // every frame and would overwrite the warp's transform writes (found the hard way -
-            // a root-position curve here left the character exactly at its start). Real event clips
-            // animate bones; this one animates the child, and the warp owns the root.
+            // Animates the child, never the root: the warp owns the root (see PlayModeTestRig).
             _eventClip = new AnimationClip { name = "SyntheticVault" };
             _eventClip.SetCurve("Foot", typeof(Transform), "localPosition.y", AnimationCurve.Linear(0f, 0f, 1f, 0.5f));
 
             _eventDefinition = ScriptableObject.CreateInstance<MotionEventDefinition>();
             SetPrivateField(_eventDefinition, "_clip", _eventClip);
             SetPrivateField(_eventDefinition, "_contactTime", 0.5f);
-
-            _go = new GameObject("EventTestCharacter");
-            _go.AddComponent<Animator>();
-            var foot = new GameObject("Foot");
-            foot.transform.SetParent(_go.transform, false);
-            _controller = _go.AddComponent<MotionMatchingController>();
-            yield return null;
-
-            _controller.SwitchDatabase(_db);
         }
 
-        [UnityTearDown]
-        public IEnumerator TearDown()
+        [TearDown]
+        public void TearDown()
         {
-            Time.captureDeltaTime = 0f;
-            if (_go != null) Object.Destroy(_go);
-            if (_db != null) Object.Destroy(_db);
-            if (_locomotionClip != null) Object.Destroy(_locomotionClip);
-            if (_eventClip != null) Object.Destroy(_eventClip);
-            if (_eventDefinition != null) Object.Destroy(_eventDefinition);
-            yield return null;
+            _rig.Dispose();
+            if (_eventClip != null) Object.DestroyImmediate(_eventClip);
+            if (_eventDefinition != null) Object.DestroyImmediate(_eventDefinition);
         }
 
         /// <summary>MotionEventDefinition is an authoring asset with serialized-only fields; tests
-        /// author one through the same serialization path the inspector uses.</summary>
+        /// author one through the same fields the inspector writes.</summary>
         private static void SetPrivateField(Object target, string fieldName, object value)
         {
             var field = target.GetType().GetField(fieldName,
@@ -82,98 +48,60 @@ namespace Kinema.MotionMatching.Tests
             field.SetValue(target, value);
         }
 
-        private static MotionMatchingDatabase CreateDatabase(AnimationClip clip)
-        {
-            var schema = new FeatureSchema
-            {
-                TrajectoryTimes = new[] { 0.2f },
-                BoneNames = new[] { "Foot" },
-                BoneWeights = new[] { 1f }
-            };
-            int dim = schema.Dimension;
-            var mean = new float[dim];
-            var std = new float[dim];
-            for (int i = 0; i < dim; i++) std[i] = 1f;
-
-            var features = new float[FrameCount * dim];
-            var frames = new MotionFrameInfo[FrameCount];
-            for (int f = 0; f < FrameCount; f++)
-            {
-                frames[f] = new MotionFrameInfo(0, f / (float)Fps);
-                features[f * dim + schema.TrajectoryPositionOffset] = f * 0.1f;
-            }
-            var clips = new[]
-            {
-                new MotionClipEntry
-                {
-                    Clip = clip, Name = clip.name, StartFrame = 0,
-                    FrameCount = FrameCount, Length = clip.length, IsLooping = true
-                }
-            };
-
-            var db = ScriptableObject.CreateInstance<MotionMatchingDatabase>();
-            db.SetBakedData(schema, features, mean, std, frames, clips,
-                FeatureWeights.Default, bakeFrameRate: Fps, bakeDateUtc: "event-test",
-                totalDuration: FrameCount / (float)Fps);
-            return db;
-        }
-
-        [UnityTest]
-        public IEnumerator PlayEvent_WarpsRootToTargetByContactTime()
+        [Test]
+        public void PlayEvent_WarpsRootToTargetByContactTime()
         {
             var target = new Vector3(2f, 0f, 3f);
             var targetRotation = Quaternion.Euler(0f, 90f, 0f);
 
-            Assert.IsTrue(_controller.PlayEvent(_eventDefinition, target, targetRotation));
-            Assert.IsTrue(_controller.IsPlayingEvent);
+            Assert.IsTrue(_rig.Controller.PlayEvent(_eventDefinition, target, targetRotation));
+            Assert.IsTrue(_rig.Controller.IsPlayingEvent);
 
-            // Contact is at 0.5 s; run to just past it (0.6 s at the fixed 1/30 step).
-            for (int i = 0; i < 18; i++) yield return null;
+            _rig.Step(18); // contact at 0.5 s; 18 x 1/30 = 0.6 s, just past it.
 
-            Vector3 horizontalError = _go.transform.position - target;
+            Vector3 horizontalError = _rig.GameObject.transform.position - target;
             horizontalError.y = 0f;
             // The per-frame warp closes the remaining error linearly; with dt = 1/30 over a 0.5 s
-            // approach the residual is ~initialError * dt / contactTime ~ 0.24 m here.
+            // approach the residual is ~initialError * dt / contactTime, about 0.24 m here.
             Assert.Less(horizontalError.magnitude, 0.3f,
                 $"root should land near the event target by contact time (was {horizontalError.magnitude:F3} m off)");
 
-            float yawError = Quaternion.Angle(_go.transform.rotation, targetRotation);
+            float yawError = Quaternion.Angle(_rig.GameObject.transform.rotation, targetRotation);
             Assert.Less(yawError, 15f, $"root yaw should converge on the target facing (was {yawError:F1} deg off)");
         }
 
-        [UnityTest]
-        public IEnumerator PlayEvent_EndsAtClipEndAndResumesMatching()
+        [Test]
+        public void PlayEvent_EndsAtClipEndAndResumesMatching()
         {
-            _controller.PlayEvent(_eventDefinition, _go.transform.position, _go.transform.rotation);
-            Assert.IsTrue(_controller.IsPlayingEvent);
+            _rig.Controller.PlayEvent(_eventDefinition, _rig.GameObject.transform.position, _rig.GameObject.transform.rotation);
+            Assert.IsTrue(_rig.Controller.IsPlayingEvent);
 
-            // Event clip is 1 s; run 1.2 s.
-            for (int i = 0; i < 36; i++) yield return null;
+            _rig.Step(36); // event clip is 1 s; 36 x 1/30 = 1.2 s.
 
-            Assert.IsFalse(_controller.IsPlayingEvent, "event should end on its own at clip end");
+            Assert.IsFalse(_rig.Controller.IsPlayingEvent, "event should end on its own at clip end");
 
-            // Matching resumed: the mapped frame is a valid database frame again after more ticks.
-            _controller.DesiredVelocity = Vector3.forward;
-            for (int i = 0; i < 10; i++) yield return null;
-            int frame = _controller.CurrentFrame;
+            // Matching resumed: the mapped frame is a valid database frame again after more steps.
+            _rig.Controller.DesiredVelocity = Vector3.forward;
+            _rig.Step(10);
+            int frame = _rig.Controller.CurrentFrame;
             Assert.GreaterOrEqual(frame, 0);
-            Assert.Less(frame, FrameCount);
+            Assert.Less(frame, PlayModeTestRig.FrameCount);
         }
 
-        [UnityTest]
-        public IEnumerator RootMotion_StaysBoundedUnderConstantIntent()
+        [Test]
+        public void RootMotion_StaysBoundedUnderConstantIntent()
         {
             // Regression guard on the warp/stride machinery as a whole: with a modest constant
             // intent, the character must not teleport or diverge. The synthetic clip covers 1 m in
             // 3 s, so even with stride warping the plausible travel over 2 s is well under 5 m.
-            _controller.DesiredVelocity = new Vector3(0f, 0f, 1f);
-            Vector3 start = _go.transform.position;
+            _rig.Controller.DesiredVelocity = new Vector3(0f, 0f, 1f);
+            Vector3 start = _rig.GameObject.transform.position;
 
-            for (int i = 0; i < 60; i++) yield return null; // 2 s at the fixed step
+            _rig.Step(60); // 2 s
 
-            float travelled = Vector3.Distance(start, _go.transform.position);
+            float travelled = Vector3.Distance(start, _rig.GameObject.transform.position);
             Assert.Less(travelled, 5f, $"unexpected divergence: travelled {travelled:F2} m in 2 s");
-            Assert.IsFalse(float.IsNaN(_go.transform.position.x), "position must never go NaN");
+            Assert.IsFalse(float.IsNaN(_rig.GameObject.transform.position.x), "position must never go NaN");
         }
     }
 }

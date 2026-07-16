@@ -55,6 +55,26 @@ namespace Kinema.MotionMatching
             Inertialization
         }
 
+        public enum TickMode
+        {
+            /// <summary>The component advances itself every Update with Time.deltaTime.</summary>
+            Automatic,
+            /// <summary>The component never advances itself; call <see cref="Step"/>. For fixed-step
+            /// or server-authoritative simulation, and for deterministic tests.</summary>
+            Manual
+        }
+
+        [Header("Ticking")]
+        [Tooltip("Automatic: advances itself every Update. Manual: call Step(dt) yourself - fixed-step or server-driven simulation, deterministic tests.")]
+        [SerializeField] private TickMode _tickMode = TickMode.Automatic;
+
+        /// <summary>How the character is advanced. See <see cref="TickMode"/> and <see cref="Step"/>.</summary>
+        public TickMode Ticking
+        {
+            get => _tickMode;
+            set => _tickMode = value;
+        }
+
         [Header("Playback")]
         [Tooltip("How jumps are smoothed. Inertialization = hard switch + decaying pose offset (AAA standard).")]
         [SerializeField] private TransitionMode _transitionMode = TransitionMode.Inertialization;
@@ -349,8 +369,28 @@ namespace Kinema.MotionMatching
 
         private void Update()
         {
+            if (_tickMode != TickMode.Automatic) return;
             if (!_initialized || _previewing) return;
             Tick(Time.deltaTime);
+        }
+
+        /// <summary>
+        /// Advances the character by <paramref name="dt"/> seconds - prediction, search, playback
+        /// clocks and one graph evaluation - exactly as an automatic Update tick would. Only does
+        /// anything in <see cref="TickMode.Manual"/>: in Automatic the component ticks itself and an
+        /// extra Step would double-advance the clocks. No-op while previewing a snapshot (the debug
+        /// rewind owns the pose) or before initialization.
+        /// </summary>
+        public void Step(float dt)
+        {
+            if (_tickMode != TickMode.Manual)
+            {
+                Debug.LogWarning($"[MotionMatching] '{name}': Step ignored - Tick Mode is Automatic, " +
+                                 "so the component already ticks itself. Set Tick Mode to Manual to drive it.", this);
+                return;
+            }
+            if (!_initialized || _previewing) return;
+            Tick(dt);
         }
 
         private void OnDrawGizmos()

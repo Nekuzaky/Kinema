@@ -4,6 +4,24 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.20.0] - 2026-07-16
+
+### Added
+- `MotionMatchingController.TickMode` (Automatic/Manual) + `Step(dt)`: in Manual the component never
+  advances itself and the caller owns the clock - fixed-step or server-authoritative simulation, and
+  deterministic testing. Automatic (self-ticking via Update) stays the default; calling `Step` in
+  Automatic warns and no-ops rather than double-advancing the clocks.
+- `MotionMatchingSearchBatch.CompletePendingSearches` is public: batch manually-stepped controllers
+  by stepping them all, then completing - the same schedule-then-complete order LateUpdate produces.
+
+### Changed
+- PlayMode tests no longer use coroutines: `TickMode.Manual` + `Step` replaced `[UnityTest]` /
+  `yield return null` / `Time.captureDeltaTime`, so every test is a plain `[Test]` whose timeline is
+  exactly the steps it takes - no frame-pacing dependency, fully deterministic. Shared setup moved to
+  `PlayModeTestRig`.
+
+101/101 EditMode tests, 11/11 PlayMode tests.
+
 ## [1.19.1] - 2026-07-16
 
 ### Fixed

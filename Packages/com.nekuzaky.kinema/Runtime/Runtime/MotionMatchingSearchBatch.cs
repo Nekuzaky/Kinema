@@ -46,7 +46,7 @@ namespace Kinema.MotionMatching
         private void OnDisable()
         {
             // Never leave a scheduled job dangling - and give controllers their synchronous path back.
-            CompletePending();
+            CompletePendingSearches();
             foreach (MotionMatchingController controller in _controllers)
                 if (controller != null && ReferenceEquals(controller.SearchScheduler, this))
                     controller.SearchScheduler = null;
@@ -80,10 +80,16 @@ namespace Kinema.MotionMatching
 
         private void LateUpdate()
         {
-            CompletePending();
+            CompletePendingSearches();
         }
 
-        private void CompletePending()
+        /// <summary>
+        /// Completes every search scheduled since the last call and applies its outcome. Called
+        /// automatically in LateUpdate; call it yourself after stepping controllers set to
+        /// <see cref="MotionMatchingController.TickMode.Manual"/>, so their jobs are still batched
+        /// (schedule them all, then complete them all) under your own tick.
+        /// </summary>
+        public void CompletePendingSearches()
         {
             for (int i = 0; i < _pending.Count; i++)
                 _pending[i].controller.CompleteScheduledSearch(_pending[i].handle);
