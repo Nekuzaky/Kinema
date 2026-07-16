@@ -158,7 +158,16 @@ namespace Kinema.MotionMatching
             _brain?.Tick(context);
 
             AIAgentCommand command = Command;
-            if (command.Goal != _lastGoal) { _lastGoal = command.Goal; _commandStart = Time.time; }
+            if (command.Goal != _lastGoal)
+            {
+                // The brain's own words for why. An NPC doing something inexplicable is the most
+                // common thing to have to explain, and the explanation already exists - it just never
+                // left the AI tab.
+                KinemaLog.Event($"{name}: {_lastGoal} -> {command.Goal} @ {command.SpeedScale:F2}x " +
+                                $"(\"{command.Reason}\")", this);
+                _lastGoal = command.Goal;
+                _commandStart = Time.time;
+            }
 
             Vector3 desired = Resolve(command);
             DesiredVelocity = _avoidObstacles ? Avoid(desired, command.Target) : desired;

@@ -38,6 +38,13 @@ namespace Kinema.MotionMatching
         public Vector3 Point;
         public Vector3 Normal;
 
+        /// <summary>
+        /// What was hit, when something was. Null for a Gap - a hole has nothing in it - and that is
+        /// the point of carrying it: a reading that can only give coordinates makes every log about
+        /// it read "over (2.00, 0.80, 8.51)", which says where but never what.
+        /// </summary>
+        public Collider Collider;
+
         /// <summary>True when there is floor on the far side to arrive on.</summary>
         public bool LandingClear;
     }
@@ -137,7 +144,20 @@ namespace Kinema.MotionMatching
 
             if (Time.time < _nextSense) return;
             _nextSense = Time.time + _senseInterval;
+
+            ObstacleKind was = _reading.Kind;
             _reading = Sense(Heading());
+
+            // The change, not the reading: this runs 10x a second, and "still None" 10x a second is
+            // the noise that hides the one Blocked that explains why an agent stopped.
+            if (KinemaLog.Verbose && _reading.Kind != was)
+                KinemaLog.Event($"{name}: sees {was} -> {_reading.Kind}" +
+                                (_reading.Kind == ObstacleKind.None
+                                    ? ""
+                                    : $" '{(_reading.Collider != null ? _reading.Collider.name : "gap")}' " +
+                                      $"at {_reading.Distance:F2}m, top {_reading.Height:F2}m, " +
+                                      $"{_reading.Depth:F2}m deep, landing {(_reading.LandingClear ? "clear" : "BLOCKED")}"),
+                    this);
         }
 
         private void OnDrawGizmosSelected()
@@ -175,6 +195,7 @@ namespace Kinema.MotionMatching
                 reading.Distance = hit.distance;
                 reading.Point = hit.point;
                 reading.Normal = hit.normal;
+                reading.Collider = hit.collider;
                 reading.Height = hit.collider.bounds.max.y - transform.position.y;
 
                 if (reading.Height <= _stepHeight)

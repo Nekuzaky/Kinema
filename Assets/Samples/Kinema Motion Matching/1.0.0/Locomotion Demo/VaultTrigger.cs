@@ -52,8 +52,8 @@ namespace Kinema.MotionMatching.Samples
             _controller = GetComponent<MotionMatchingController>();
             _sensor = GetComponent<ObstacleSensor>();
             if (_sensor == null)
-                Debug.LogWarning("[Kinema] No ObstacleSensor beside the VaultTrigger, so nothing will " +
-                                 "read as vaultable and Space will only free-jump.", this);
+                KinemaLog.Misconfigured($"'{name}': no ObstacleSensor beside the VaultTrigger, so " +
+                                        "nothing reads as vaultable and Space only free-jumps.", this);
 
             _vaultAction = new InputAction("Vault", InputActionType.Button);
             _vaultAction.AddBinding("<Keyboard>/space");
@@ -84,7 +84,8 @@ namespace Kinema.MotionMatching.Samples
 
                 if (autoTriggered || _vaultAction.WasPressedThisFrame())
                 {
-                    Debug.Log($"[Kinema] Vault over '{ahead.Point}' (top {ahead.Height:F2} m, {ahead.Depth:F2} m thick).", this);
+                    KinemaLog.Event($"{name}: vault over '{(ahead.Collider != null ? ahead.Collider.name : "?")}' " +
+                                    $"(top {ahead.Height:F2} m, {ahead.Depth:F2} m thick)", this);
                     Vault(ahead);
                 }
                 return;
@@ -99,13 +100,15 @@ namespace Kinema.MotionMatching.Samples
                 if (jump == null) jump = moving ? _jumpIdleEvent : _jumpMovingEvent;
                 if (jump != null)
                 {
-                    Debug.Log($"[Kinema] Free jump ({(moving ? "moving" : "standing")}) with '{jump.name}'.", this);
+                    KinemaLog.Event($"{name}: free jump ({(moving ? "moving" : "standing")}) with '{jump.name}'", this);
                     _controller.PlayEvent(jump, transform.position, Quaternion.LookRotation(Flatten(transform.forward), Vector3.up));
                 }
                 else
                 {
-                    // Say why nothing happened rather than eating the press silently.
-                    Debug.LogWarning("[Kinema] Jump pressed: no obstacle in the vault window and no free-jump event bound.", this);
+                    // Always, not verbose: a button that does nothing is the thing you are trying to
+                    // explain, and it needs no repro.
+                    KinemaLog.Misconfigured($"'{name}': jump pressed, but no obstacle in the vault " +
+                                            "window and no free-jump event bound.", this);
                 }
             }
         }

@@ -64,9 +64,9 @@ namespace Kinema.MotionMatching
             MotionMatchingDatabase database = _controller.Database;
             if (database == null || !database.HasTags)
             {
-                Debug.LogWarning($"[Kinema] '{name}': the database carries no tags, so nothing is " +
-                                 "filtered and every clip in it competes for every step. Rebake with " +
-                                 "tag ranges authored.", this);
+                KinemaLog.Misconfigured($"'{name}': the database carries no tags, so nothing is " +
+                                        "filtered and every clip in it competes for every step. Rebake " +
+                                        "with tag ranges authored.", this);
                 return;
             }
 
@@ -75,12 +75,16 @@ namespace Kinema.MotionMatching
                 ulong mask = database.GetTagMask(tag);
                 if (mask == 0ul)
                 {
-                    Debug.LogWarning($"[Kinema] '{name}': no tag named '{tag}' in the database, so it " +
-                                     "excludes nothing. Check the spelling against the bake.", this);
+                    // A warning, not an event: a tag spelled wrong resolves to zero, excludes nothing,
+                    // and looks exactly like one that works. Nobody would go looking for it.
+                    KinemaLog.Misconfigured($"'{name}': no tag named '{tag}' in the database, so it " +
+                                            "excludes nothing. Check the spelling against the bake.", this);
                     continue;
                 }
                 ExcludedMask |= mask;
             }
+
+            KinemaLog.Event($"{name}: excluding [{string.Join(",", _excludedTags)}] = 0x{ExcludedMask:X}", this);
 
             // Or-ed, not assigned: something else may own exclusions too, and clobbering them would
             // silently widen the search back out.

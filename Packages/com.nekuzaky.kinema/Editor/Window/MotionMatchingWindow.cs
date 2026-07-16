@@ -754,6 +754,20 @@ namespace Kinema.MotionMatching.Editor
         /// </summary>
         private void DrawSettings()
         {
+            using (MotionMatchingStyles.BeginSection("Logging"))
+            {
+                EditorGUI.BeginChangeCheck();
+                bool verbose = EditorGUILayout.ToggleLeft("Verbose logging", KinemaLogSetting.Verbose);
+                if (EditorGUI.EndChangeCheck()) KinemaLogSetting.Verbose = verbose;
+
+                MotionMatchingStyles.HelpRow(
+                    "Prints what happens - vaults, jumps, AI goal changes, what the obstacle sensor " +
+                    "starts and stops seeing, which tags resolved. Transitions only: what a character " +
+                    "is doing right now is in Copy Diagnostics, because a line per frame buries the one " +
+                    "line that mattered. Misconfiguration warnings print either way.",
+                    MessageType.None);
+            }
+
             // ----- Controller: all runtime parameters -----
             _controller = (MotionMatchingController)EditorGUILayout.ObjectField("Controller", _controller, typeof(MotionMatchingController), true);
 
