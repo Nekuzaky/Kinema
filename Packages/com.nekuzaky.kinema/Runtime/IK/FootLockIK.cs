@@ -58,8 +58,11 @@ namespace Kinema.MotionMatching
             MotionMatchingDatabase db = _controller.Database;
             if (db == null || !db.HasContacts) return;
             if (!_resolved) Resolve(db);
+            if (_legs == null) return; // Resolve can no-op mid-reinit (spawned ghost); stay quiet.
 
-            byte contacts = db.GetContacts(_controller.CurrentFrame);
+            int frame = _controller.CurrentFrame;
+            if (frame < 0 || frame >= db.FrameCount) return; // -1 before the first search resolves.
+            byte contacts = db.GetContacts(frame);
             float dt = Time.deltaTime;
 
             for (int i = 0; i < _legs.Length; i++)

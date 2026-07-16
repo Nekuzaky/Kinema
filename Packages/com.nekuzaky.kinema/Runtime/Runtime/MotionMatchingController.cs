@@ -740,12 +740,16 @@ namespace Kinema.MotionMatching
         /// </summary>
         private float TrajectoryDeviation()
         {
-            if (_lastSearchedTrajectory == null) return float.MaxValue;
+            if (_lastSearchedTrajectory == null || _desiredTrajectory == null) return float.MaxValue;
 
             float[] times = _database.Schema.TrajectoryTimes;
+            // Bound by every array, not just times: a controller re-initialized mid-life (a spawned
+            // ghost double-initializes) can briefly hold a _lastSearchedTrajectory sized for the
+            // previous schema, and indexing past it threw here.
+            int count = Mathf.Min(times.Length, Mathf.Min(_desiredTrajectory.Length, _lastSearchedTrajectory.Length));
             float sum = 0f;
             int futureCount = 0;
-            for (int i = 0; i < times.Length; i++)
+            for (int i = 0; i < count; i++)
             {
                 if (times[i] <= 0f) continue;
                 sum += (_desiredTrajectory[i].Position - _lastSearchedTrajectory[i]).magnitude;

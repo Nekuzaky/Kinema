@@ -4,6 +4,22 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.1] - 2026-07-16
+
+### Fixed
+- Spawned ghosts threw three exceptions per frame (`IndexOutOfRangeException` in
+  `TrajectoryDeviation`, `NullReferenceException` in `FootLockIK` and `GroundAdaptationIK`). A ghost
+  is `Instantiate`d from an active character, so its components initialize once during the clone,
+  then again after the spawner strips and re-enables them - and for a frame the controller and its
+  IK run against half-rebuilt state. Now guarded at the three sites: the deviation loop is bounded
+  by every array it reads (not just the schema's), `FootLockIK` skips an out-of-range or
+  not-yet-searched frame and a null leg set, and `GroundAdaptationIK` null-checks its controller (it
+  never did) and its leg set. All three are correct defensive checks independent of ghosts.
+
+### Notes
+- The "Can't remove SessionRecorder because GhostReplayDirector depends on it" line is not an error -
+  it is Unity refusing a component removal blocked by `[RequireComponent]`, expected.
+
 ## [1.21.0] - 2026-07-16
 
 ### Added

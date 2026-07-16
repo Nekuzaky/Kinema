@@ -70,12 +70,12 @@ namespace Kinema.MotionMatching
 
         private void LateUpdate()
         {
-            if (_weight <= 0f || !_controller.IsInitialized) return;
+            if (_weight <= 0f || _controller == null || !_controller.IsInitialized) return;
 
             MotionMatchingDatabase db = _controller.Database;
             if (db == null || db.ContactBoneCount == 0) return;
             if (!_resolved) Resolve(db);
-            if (_pelvis == null) return;
+            if (_legs == null || _pelvis == null) return; // Resolve can no-op mid-reinit (spawned ghost).
 
             float dt = Time.deltaTime;
             if (dt <= 0f) return;
