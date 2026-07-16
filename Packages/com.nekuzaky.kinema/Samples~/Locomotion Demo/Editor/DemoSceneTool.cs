@@ -394,7 +394,11 @@ namespace Kinema.MotionMatching.Samples.Editor
             // model-directed with no other change - and it shows up in the window's AI tab either way.
             var brain = ai.AddComponent<ScriptedAIBrain>();
             DemoSceneBuilder.SetEnum(brain, "_behaviour", 2); // FollowPlayer
-            ai.AddComponent<AICommandProvider>();
+            var provider = ai.AddComponent<AICommandProvider>();
+            // This one auto-vaults, so anything inside the vault window must not read as an obstacle:
+            // 1.2 clears the trigger's 1.15 ceiling. Otherwise avoidance steers it around every wall
+            // it was built to vault, and the chase never shows a vault at all.
+            DemoSceneBuilder.SetFloat(provider, "_passableHeight", 1.2f);
             Tint(ai, new Color(1f, 0.55f, 0.4f)); // warm, to read apart from the player
         }
 

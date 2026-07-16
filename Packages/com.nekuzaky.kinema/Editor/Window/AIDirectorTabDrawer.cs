@@ -48,12 +48,13 @@ namespace Kinema.MotionMatching.Editor
 
         private static void DrawSummary(AICommandProvider[] agents)
         {
-            int llm = 0, scripted = 0, moving = 0;
+            int llm = 0, scripted = 0, moving = 0, avoiding = 0;
             foreach (var a in agents)
             {
                 if (a.GetComponent("LLMAIBrain") != null) llm++;
                 else if (a.GetComponent<ScriptedAIBrain>() != null) scripted++;
                 if (a.Command.Goal != AIGoal.Idle && !a.ReachedGoal) moving++;
+                if (a.Avoiding) avoiding++;
             }
 
             using (MotionMatchingStyles.BeginSection($"AI Agents — {agents.Length}"))
@@ -63,6 +64,7 @@ namespace Kinema.MotionMatching.Editor
                 MotionMatchingStyles.StatCard(scripted.ToString(), "Scripted", MotionMatchingStyles.Ok);
                 MotionMatchingStyles.StatCard(llm.ToString(), "LLM-driven", llm > 0 ? MotionMatchingStyles.Ok : MotionMatchingStyles.Muted);
                 MotionMatchingStyles.StatCard(moving.ToString(), "Moving", MotionMatchingStyles.Accent);
+                MotionMatchingStyles.StatCard(avoiding.ToString(), "Steering", avoiding > 0 ? MotionMatchingStyles.Accent : MotionMatchingStyles.Muted);
             }
         }
 
@@ -92,6 +94,8 @@ namespace Kinema.MotionMatching.Editor
                             if (GUILayout.Button(agent.name, EditorStyles.boldLabel, GUILayout.Width(150)))
                                 EditorGUIUtility.PingObject(agent.gameObject);
                             GUILayout.FlexibleSpace();
+                            if (agent.Avoiding)
+                                MotionMatchingStyles.StatusPill("STEERING", MotionMatchingStyles.Accent);
                             MotionMatchingStyles.StatusPill(BrainName(agent),
                                 agent.GetComponent("LLMAIBrain") != null ? MotionMatchingStyles.Accent : MotionMatchingStyles.Ok);
                         }

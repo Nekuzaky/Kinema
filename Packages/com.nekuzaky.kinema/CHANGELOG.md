@@ -4,6 +4,41 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.28.0] - 2026-07-16
+
+AI agents that read the world and vary their gait. The agents already drove the same motion matching
+stack as the player - what they lacked was anything to say about obstacles, and any reason to change
+speed.
+
+### Added
+- Obstacle avoidance on `AICommandProvider`: three feelers (centre and one each side) bend the
+  desired velocity around walls, steering toward the roomier side and slowing into the turn, so an
+  agent rounds an obstacle instead of grinding along it. Four things read as passable on purpose:
+  the agent's own colliders, anything under `_passableHeight`, walkable slopes (by face angle - a
+  ramp's collider reaches metres up, so judging it by height would read it as a wall and the agent
+  would refuse to climb), and the target a Follow command is chasing (it stands closer than the
+  feelers reach; treating it as an obstacle would make the agent orbit the very thing it is closing
+  on). Off with `_avoidObstacles`, gizmos on selection, "Steering" count and per-agent pill in the AI
+  tab.
+- The steer angle is smoothed rather than applied raw: the matcher predicts a trajectory from this
+  velocity and searches against it, so a steer that snaps between frames rewrites the prediction each
+  frame and the search flips between clips - the same stutter jittery input causes.
+- `_passableHeight` is per-agent because how high a character can get over unaided genuinely differs:
+  the demo's auto-vaulting follower carries 1.2 (clearing the vault trigger's 1.15 ceiling) so
+  avoidance does not steer it around the walls it exists to vault, while a wanderer that cannot vault
+  keeps the low default and walks around them.
+- `ScriptedAIBrain` now asks for a speed that tracks the distance left (`_walkScale`, `_runScale`,
+  `_runDistance`), so an agent runs the long leg and walks the last few metres, and its status line
+  says which.
+
+### Fixed
+- `ScriptedAIBrain` held one fixed `_speedScale` of 0.8, so every agent jogged at a constant 2.8 m/s
+  for its whole life - never walking, never running. That pinned the search inside a single band of
+  the data and left every other stride length in the bake unused.
+- `AICommandProvider._maxSpeed` defaulted to 3.5, above the 3 m/s ceiling the baked set actually
+  covers (the player's input provider caps at 3 for that measured reason). Any brain asking for
+  `SpeedScale = 1` starved the search and slid the feet. Now 3.
+
 ## [1.27.0] - 2026-07-16
 
 ### Added

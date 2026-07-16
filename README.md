@@ -70,6 +70,14 @@ Mecanim interop.
 - Two layers: a brain decides *what to do* (high-level goals), an `AICommandProvider` turns that into
   the same locomotion intent player input produces - so an NPC drives the identical matching stack,
   and the brain is swappable without touching either.
+- Agents read the world: three feelers bend the desired velocity around walls, steering toward the
+  roomier side and slowing into the turn. Walkable slopes, anything under the agent's own passable
+  height, and a Follow target all read as clear - so an agent climbs ramps, vaults what it can vault
+  instead of circling it, and closes on the player rather than orbiting them. The steer is smoothed,
+  because the search reads this velocity as intent and a jittery one makes it flip between clips.
+- Agents vary their gait: the scripted brain asks for a speed that tracks the distance left, so it
+  runs the long leg and walks the last few metres - pulling the walk, run and start/stop clips out of
+  the same database the player uses, instead of jogging at one fixed speed forever.
 - `ScriptedAIBrain` (deterministic Wander / Patrol / FollowPlayer) is the default. `LLMAIBrain`
   (sample) asks an OpenAI-compatible endpoint what the character should do next and maps the JSON
   reply to a goal - endpoint, model, key and persona are all serialized, consulted on a timer or when

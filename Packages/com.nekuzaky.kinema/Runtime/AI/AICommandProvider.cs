@@ -18,7 +18,13 @@ namespace Kinema.MotionMatching
     {
         #region Public
 
-        [SerializeField, Min(0f)] private float _maxSpeed = 3.5f;
+        // 3 m/s for the same reason the player's input provider caps there: it is the top speed the
+        // baked set actually covers. Above it the search has almost nothing to match, so it flickers
+        // between clips and the stride warp pins at its ceiling - the feet slide. An AI asking for a
+        // speed the data does not hold looks worse than a slower one that does.
+        [Tooltip("Top locomotion speed. Keep it inside the range the database covers; asking for more " +
+                 "starves the search and slides the feet.")]
+        [SerializeField, Min(0f)] private float _maxSpeed = 3f;
 
         [Tooltip("Stop when closer than this to a MoveTo/Follow goal (meters).")]
         [SerializeField, Min(0.1f)] private float _arriveDistance = 1f;
@@ -28,6 +34,41 @@ namespace Kinema.MotionMatching
 
         [Tooltip("Flee/Follow: desired standoff distance from the target (meters).")]
         [SerializeField, Min(0.5f)] private float _standoff = 2f;
+
+        [Header("Obstacle avoidance")]
+
+        [Tooltip("Steer around obstacles instead of walking into them. Off = straight line to the goal.")]
+        [SerializeField] private bool _avoidObstacles = true;
+
+        [Tooltip("How far ahead to look for obstacles (meters).")]
+        [SerializeField, Min(0.5f)] private float _probeDistance = 2.5f;
+
+        [Tooltip("Angle of the left/right feeler rays off the travel direction (degrees).")]
+        [SerializeField, Range(10f, 80f)] private float _whiskerAngle = 35f;
+
+        [Tooltip("Hardest the agent will steer away from an obstacle (degrees).")]
+        [SerializeField, Range(0f, 90f)] private float _maxSteerAngle = 60f;
+
+        // How high this particular agent can get over unaided - which genuinely differs per agent, so
+        // it is a field and not a constant. An agent that auto-vaults should carry a value above its
+        // vault trigger's ceiling, or avoidance steers it around the very walls it could vault and
+        // the vault never fires. An agent that cannot vault must keep it low, or it walks into the
+        // crate it has no way over and grinds along it.
+        [Tooltip("Obstacles shorter than this are stepped over or vaulted, not walked around (meters " +
+                 "above the agent's feet). Set it above the vault trigger's max height on an " +
+                 "auto-vaulting agent; leave it low on one that cannot vault.")]
+        [SerializeField, Min(0f)] private float _passableHeight = 0.3f;
+
+        [Tooltip("Surfaces tilted less than this are ramps to walk up, not walls to walk around " +
+                 "(degrees). Match the CharacterController's Slope Limit.")]
+        [SerializeField, Range(0f, 89f)] private float _walkableSlopeLimit = 45f;
+
+        [Tooltip("Which layers count as obstacles.")]
+        [SerializeField] private LayerMask _obstacleLayers = ~0;
+
+        [Tooltip("How fast steering builds and releases. Low = smooth but late, high = sharp but " +
+                 "jittery. Jitter here thrashes the matcher's trajectory, so err low.")]
+        [SerializeField, Min(0.5f)] private float _steerSharpness = 6f;
 
         public Vector3 DesiredVelocity { get; private set; }
         public Vector3 DesiredFacing => Vector3.zero; // face travel
@@ -42,6 +83,9 @@ namespace Kinema.MotionMatching
             _brain != null ? _brain.Status : "no brain (idle)";
 
         public bool ReachedGoal { get; private set; }
+
+        /// <summary>True while the agent is steering around something, for the AI window.</summary>
+        public bool Avoiding => Mathf.Abs(_steer) > 0.05f;
 
         /// <summary>True while a hand-issued command from the AI window is holding control.</summary>
         public bool OverrideActive => Time.time < _overrideUntil;
@@ -61,12 +105,17 @@ namespace Kinema.MotionMatching
 
         #region Private and Protected
 
+        /// <summary>Chest height - the same the vault probe uses, and above any ground undulation.</summary>
+        private const float ProbeHeight = 0.6f;
+
         private IAIBrain _brain;
         private Transform _player;
         private float _commandStart;
         private AIGoal _lastGoal;
         private AIAgentCommand _override;
         private float _overrideUntil;
+        private float _steer;
+        private int _preferredSide;
 
         #endregion
 
@@ -78,6 +127,11 @@ namespace Kinema.MotionMatching
             // A player reference lets Follow/Flee brains reason about the protagonist without wiring.
             var player = GetPlayer();
             if (player != null) _player = player.transform;
+
+            // A fixed side per agent, not a random one: when a head-on obstacle blocks both feelers
+            // equally there is no better choice, and re-rolling it every frame makes the agent shiver
+            // in place. Parity of the instance id also splits a crowd both ways instead of herding it.
+            _preferredSide = (GetInstanceID() & 1) == 0 ? 1 : -1;
         }
 
         private void Update()
@@ -96,7 +150,24 @@ namespace Kinema.MotionMatching
             AIAgentCommand command = Command;
             if (command.Goal != _lastGoal) { _lastGoal = command.Goal; _commandStart = Time.time; }
 
-            DesiredVelocity = Resolve(command);
+            Vector3 desired = Resolve(command);
+            DesiredVelocity = _avoidObstacles ? Avoid(desired, command.Target) : desired;
+        }
+
+        private void OnDrawGizmosSelected()
+        {
+            if (!_avoidObstacles) return;
+
+            Vector3 forward = DesiredVelocity.sqrMagnitude > 1e-4f
+                ? DesiredVelocity.normalized
+                : Flat(transform.forward).normalized;
+            Vector3 origin = transform.position + Vector3.up * ProbeHeight;
+
+            Gizmos.color = Avoiding ? Color.red : Color.green;
+            Gizmos.DrawLine(origin, origin + forward * _probeDistance);
+            Gizmos.color = new Color(1f, 1f, 0f, 0.6f);
+            Gizmos.DrawLine(origin, origin + Turn(forward, -_whiskerAngle) * _probeDistance);
+            Gizmos.DrawLine(origin, origin + Turn(forward, _whiskerAngle) * _probeDistance);
         }
 
         #endregion
@@ -141,6 +212,86 @@ namespace Kinema.MotionMatching
             float eased = speed * Mathf.Clamp01((distance - stopDistance) / _slowRadius);
             return toGoal / Mathf.Max(distance, 1e-4f) * eased;
         }
+
+        /// <summary>
+        /// Bends the desired velocity around whatever is ahead, using three feelers (centre and one
+        /// each side). The agent steers toward the side with more room and slows as the obstacle
+        /// closes, so it rounds a wall instead of grinding along it.
+        ///
+        /// The steer angle is smoothed rather than applied raw. The matcher predicts a future
+        /// trajectory from this velocity and searches against it; a steer that snaps between frames
+        /// rewrites that prediction every frame, and the search flips between clips - the same
+        /// stutter a jittery input would cause. Smoothing keeps the intent legible to the search.
+        /// </summary>
+        private Vector3 Avoid(Vector3 desired, Transform goalTarget)
+        {
+            float speed = desired.magnitude;
+            if (speed < 1e-3f)
+            {
+                _steer = Mathf.Lerp(_steer, 0f, Damp());
+                return desired;
+            }
+
+            Vector3 forward = desired / speed;
+            float centre = Probe(forward, goalTarget);
+
+            float target = 0f;
+            if (centre < _probeDistance)
+            {
+                float left = Probe(Turn(forward, -_whiskerAngle), goalTarget);
+                float right = Probe(Turn(forward, _whiskerAngle), goalTarget);
+
+                // Steer toward the roomier side; when they tie, this agent's fixed side breaks it.
+                float bias = right - left;
+                int side = Mathf.Abs(bias) > 0.1f ? (bias > 0f ? 1 : -1) : _preferredSide;
+
+                // Urgency: touching the obstacle steers hardest, a distant one barely at all.
+                target = side * (1f - centre / _probeDistance);
+
+                // Slow into the turn. Cornering at full speed either clips the obstacle or asks the
+                // search for a hard turn at a speed the data has no clip for.
+                speed *= Mathf.Lerp(1f, 0.45f, 1f - centre / _probeDistance);
+            }
+
+            _steer = Mathf.Lerp(_steer, target, Damp());
+            return Turn(forward, _steer * _maxSteerAngle) * speed;
+        }
+
+        /// <summary>
+        /// Free distance along <paramref name="direction"/>, or <see cref="_probeDistance"/> when
+        /// clear. Four things read as clear on purpose:
+        /// <list type="bullet">
+        /// <item>the agent's own colliders;</item>
+        /// <item>anything low enough to vault or step over - steering around a knee-high crate is
+        /// exactly what we do not want when the character can go over it;</item>
+        /// <item>walkable slopes. The feeler is a flat ray at chest height, so on a ramp it strikes
+        /// the slope face itself. Judging that by height would read a ramp as a wall - its collider
+        /// reaches metres up - and the agent would refuse to climb anything. The face angle is what
+        /// separates a ramp you walk up from a wall you walk around;</item>
+        /// <item><paramref name="goalTarget"/>, the thing a Follow command is chasing. It stands
+        /// closer than the feelers reach, so treating it as an obstacle would make the agent swerve
+        /// away from the very target it is closing on, and orbit it forever.</item>
+        /// </list>
+        /// </summary>
+        private float Probe(Vector3 direction, Transform goalTarget)
+        {
+            Vector3 origin = transform.position + Vector3.up * ProbeHeight;
+
+            if (!Physics.Raycast(origin, direction, out RaycastHit hit, _probeDistance,
+                    _obstacleLayers, QueryTriggerInteraction.Ignore))
+                return _probeDistance;
+
+            if (hit.collider.transform.IsChildOf(transform)) return _probeDistance;
+            if (goalTarget != null && hit.collider.transform.IsChildOf(goalTarget)) return _probeDistance;
+            if (hit.collider.bounds.max.y - transform.position.y <= _passableHeight) return _probeDistance;
+            if (Vector3.Angle(hit.normal, Vector3.up) <= _walkableSlopeLimit) return _probeDistance;
+
+            return hit.distance;
+        }
+
+        private float Damp() => 1f - Mathf.Exp(-_steerSharpness * Time.deltaTime);
+
+        private static Vector3 Turn(Vector3 v, float degrees) => Quaternion.AngleAxis(degrees, Vector3.up) * v;
 
         private static Vector3 Flat(Vector3 v) { v.y = 0f; return v; }
 
