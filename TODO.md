@@ -132,8 +132,11 @@ left, roughly in priority order within each section.
       exports to a training dataset (`Tools > Kinema > Learned MM > Export Training Dataset`) -
       float32 feature matrix + mean/std + per-frame clip/time + gait phase + a self-describing
       manifest and a numpy loader; clip boundaries exported so the stepper never trains across a cut.
-      Next: Unity Sentis runtime (ONNX inference, not yet a package dependency) and the stepper
-      network.
+      **Step 2 prep done**: the PyTorch training pipeline (`Documentation~/Training/train_lmm.py` -
+      compressor/decompressor autoencoder, stepper, projector, ONNX export) and the backend-agnostic
+      runtime seam `ILearnedMotionModel` (Project/Step/Decompress). Next: the Unity Sentis backend
+      that loads the exported ONNX behind that interface, then wiring the controller to it. Sentis is
+      still not a package dependency - added only when the backend lands.
 - [x] **Timeline / cutscene interop** - `Kinema.MotionMatching.Timeline` (separate optional assembly,
       only compiles with `com.unity.timeline` installed): `MotionMatchingTrack` + `MotionMatchingClipAsset`
       extend `SetMatchingActive` to Timeline - drop a clip on the track to fade matching in for its

@@ -4,6 +4,23 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.27.0] - 2026-07-16
+
+### Added
+- Learned Motion Matching, step 2 prep (the training side + the runtime seam):
+  - `Documentation~/Training/train_lmm.py`: the PyTorch pipeline (Holden et al. 2020) - a
+    compressor/decompressor autoencoder, a stepper trained only on within-clip frame pairs, and a
+    projector, exporting `decompressor/stepper/projector.onnx`. Loads the dataset from step 1. Valid,
+    documented; not run here (no torch in this environment), syntax-checked.
+  - `ILearnedMotionModel` (runtime): the backend-agnostic seam the ONNX weights will sit behind -
+    Project (query -> latent, replacing the search), Step (latent -> next latent, no search most
+    frames), Decompress (latent -> pose features). No Sentis dependency: the package takes none until
+    a backend is added.
+  - `Documentation~/Training/README.md`: the bake -> export -> train -> Sentis pipeline and how the
+    three networks map to the interface.
+- Next (step 3, not built): a Unity Sentis backend implementing `ILearnedMotionModel` from the
+  exported ONNX, then the controller path that uses it in place of the database search.
+
 ## [1.26.0] - 2026-07-16
 
 Brain-driven AI, LLM-ready, all visible from the window.
