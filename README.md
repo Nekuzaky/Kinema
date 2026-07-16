@@ -66,8 +66,20 @@ Mecanim interop.
 - Manual ticking: set `TickMode.Manual` and call `Step(dt)` to own the clock - fixed-step or
   server-authoritative simulation, and deterministic tests. Automatic (self-ticking) is the default.
 
+**AI**
+- Two layers: a brain decides *what to do* (high-level goals), an `AICommandProvider` turns that into
+  the same locomotion intent player input produces - so an NPC drives the identical matching stack,
+  and the brain is swappable without touching either.
+- `ScriptedAIBrain` (deterministic Wander / Patrol / FollowPlayer) is the default. `LLMAIBrain`
+  (sample) asks an OpenAI-compatible endpoint what the character should do next and maps the JSON
+  reply to a goal - endpoint, model, key and persona are all serialized, consulted on a timer or when
+  a goal completes (a few calls a minute per agent, never per frame), async, with a wander fallback
+  on no key or any error. Networking stays out of the runtime.
+
 **Editor window** (`Tools > Kinema > Motion Matching Window`, Ctrl+Shift+M)
-- Overview / Database / Bake / Tags / Director / Debug / Analysis / Settings.
+- Overview / Database / Bake / Tags / Director / AI / Debug / Analysis / Settings.
+- AI tab: every agent's brain, goal, status and reason, with manual commands (per agent or all) that
+  nudge it while its brain keeps running underneath.
 - Debug tab: scrub recorded matching decisions, visually rewind any of them onto the live
   character, and pin one to diff against another (per-group cost deltas, what moved most, intent
   shift).
@@ -78,10 +90,24 @@ character's rig in one click.
 - `Tools > Kinema > Benchmark Search`: measures the real search cost (mean/median/p99, order-checked
 against Burst's async compile) and converts it into characters-per-frame at a given search rate.
 
-**Demo** (`Tools > Kinema > Demo Scene`)
-- One menu item resolves its own source - an installed mocap pack, otherwise a dropped-in FBX (using
-its clips or generating a procedural set) - bakes it, and builds a scene with a traversal course
-(vault walls, gapped platforms, rising steps), full keyboard + gamepad input, and camera orbit.
+**Learned Motion Matching** (in progress)
+- Step 1, shipping: `Tools > Kinema > Learned MM > Export Training Dataset` writes a baked database as
+  a training set - float32 feature matrix, mean/std, per-frame clip/time, gait phase - as flat
+  binaries with a self-describing manifest and a numpy loader. Clip boundaries are exported so a
+  stepper never trains across a cut.
+- Step 2, shipping: the PyTorch pipeline (`Documentation~/Training/`) and `ILearnedMotionModel`, the
+  backend-agnostic runtime seam (Project / Step / Decompress).
+- Step 3, not built: a Unity Sentis backend running the exported ONNX behind that interface. The
+  package takes no ML dependency until then.
+
+**Demo scenes** (`Tools > Kinema > Demo Scene`, `Tools > Kinema > Scenes > Parkour | Sandbox`)
+- One generator resolves its own source - an installed mocap pack, otherwise a dropped-in FBX (using
+its clips or generating a procedural set) - bakes it, and builds the scene: full keyboard + gamepad
+input, camera orbit, URP post-processing, vault and free-jump events.
+- **Test**: a terrain that provokes every subsystem (ramps, steps, ledge, a long lane).
+- **Parkour**: a vault-wall run, gap-jump gauntlet and ascending platforms as a circuit, with an AI
+  follower chasing and auto-vaulting.
+- **Sandbox**: an open arena with six AI wanderers - the matcher running on seven characters at once.
 
 ## Installation
 
