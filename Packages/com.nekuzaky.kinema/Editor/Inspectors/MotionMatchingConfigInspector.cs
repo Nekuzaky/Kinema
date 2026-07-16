@@ -50,7 +50,10 @@ namespace Kinema.MotionMatching.Editor
 
         private static void Bake(MotionMatchingConfig config)
         {
-            BakeReport report = MotionMatchingBaker.Bake(config);
+            // Rebake this config's existing database in place. Passing null instead created a fresh
+            // asset on every click: the scene's controllers kept referencing the old one, so the bake
+            // appeared to change nothing while "XDatabase 1", "XDatabase 2"... piled up beside it.
+            BakeReport report = MotionMatchingBaker.Bake(config, MotionMatchingBaker.FindDatabaseFor(config));
             if (report.Success)
             {
                 EditorGUIUtility.PingObject(report.Database);

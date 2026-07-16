@@ -16,9 +16,18 @@ namespace Kinema.MotionMatching
         public readonly Vector3 Forward;
         public readonly Vector3 Right;
 
+        /// <summary>
+        /// The character's own altitude. <see cref="Origin"/> is flattened to y = 0 because every
+        /// trajectory feature is built from the horizontal projection; this keeps the piece that
+        /// projection throws away, so bone heights can be measured from the character's feet rather
+        /// than from world zero.
+        /// </summary>
+        public readonly float GroundY;
+
         public CharacterSpace(Vector3 origin, Vector3 forward)
         {
             Origin = new Vector3(origin.x, 0f, origin.z);
+            GroundY = origin.y;
             Vector3 flat = new Vector3(forward.x, 0f, forward.z);
             Forward = flat.sqrMagnitude > 1e-6f ? flat.normalized : Vector3.forward;
             Right = new Vector3(Forward.z, 0f, -Forward.x);
@@ -59,13 +68,20 @@ namespace Kinema.MotionMatching
         }
 
         /// <summary>
-        /// World point -> full 3D local offset (x = right, y = height above ground, z = forward).
-        /// Used for bone positions, where vertical placement (a lifted foot) is meaningful.
+        /// World point -> full 3D local offset (x = right, y = height above the character's feet,
+        /// z = forward). Used for bone positions, where vertical placement (a lifted foot) is
+        /// meaningful.
+        ///
+        /// The height is relative to <see cref="GroundY"/>, not to world zero. Measuring it from
+        /// world zero happens to agree at the origin - which is exactly where the baker samples the
+        /// rig - and diverges by the terrain's altitude everywhere else, so the query for a
+        /// character on a hill at y = 50 would compare a foot at 50.1 against a baked 0.1 and the
+        /// search would rank candidates by how high the ground is.
         /// </summary>
         public Vector3 ToLocalOffset3D(Vector3 worldPoint)
         {
             Vector3 delta = worldPoint - Origin;
-            return new Vector3(Vector3.Dot(delta, Right), delta.y, Vector3.Dot(delta, Forward));
+            return new Vector3(Vector3.Dot(delta, Right), worldPoint.y - GroundY, Vector3.Dot(delta, Forward));
         }
 
         /// <summary>World vector -> full 3D local vector (x = right, y = up, z = forward). Used for bone velocities.</summary>
@@ -74,10 +90,12 @@ namespace Kinema.MotionMatching
             return new Vector3(Vector3.Dot(worldVector, Right), worldVector.y, Vector3.Dot(worldVector, Forward));
         }
 
-        /// <summary>Full 3D local offset (x = right, y = height, z = forward) -> world point. Inverse of <see cref="ToLocalOffset3D"/>.</summary>
+        /// <summary>Full 3D local offset (x = right, y = height above the character's feet,
+        /// z = forward) -> world point. Inverse of <see cref="ToLocalOffset3D"/>.</summary>
         public Vector3 ToWorldOffset3D(Vector3 localOffset)
         {
-            return Origin + Right * localOffset.x + Vector3.up * localOffset.y + Forward * localOffset.z;
+            return Origin + Vector3.up * GroundY
+                   + Right * localOffset.x + Vector3.up * localOffset.y + Forward * localOffset.z;
         }
 
         #endregion

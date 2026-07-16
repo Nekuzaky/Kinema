@@ -70,5 +70,50 @@ namespace Kinema.MotionMatching.Tests
             Assert.AreEqual(worldPoint.y, back.y, 1e-4f);
             Assert.AreEqual(worldPoint.z, back.z, 1e-4f);
         }
+
+        [Test]
+        public void ToLocalOffset3D_RoundTrips_WhenTheCharacterIsAboveTheWorldOrigin()
+        {
+            // Same round-trip, on a character standing on a hill. The pair must stay inverses
+            // wherever the character is, not only at y = 0 where the bake happens to sample.
+            var space = new CharacterSpace(new Vector3(-1f, 50f, 2f), new Vector3(1f, 0f, 0f));
+            Vector3 worldPoint = new Vector3(0.5f, 51.2f, 3f);
+
+            Vector3 back = space.ToWorldOffset3D(space.ToLocalOffset3D(worldPoint));
+
+            Assert.AreEqual(worldPoint.x, back.x, 1e-4f);
+            Assert.AreEqual(worldPoint.y, back.y, 1e-4f);
+            Assert.AreEqual(worldPoint.z, back.z, 1e-4f);
+        }
+
+        [Test]
+        public void BoneHeight_IsMeasuredFromTheCharacter_NotFromWorldZero()
+        {
+            // The struct's contract: features are "invariant to where the character stands". The
+            // bake samples the rig at the world origin, so a foot 0.1 m off the ground bakes as
+            // y = 0.1. The same pose on a hill at y = 50 must query as 0.1 too - if it queries as
+            // 50.1 the cost function compares a height against a completely different quantity, and
+            // every candidate frame is judged by how high the terrain is.
+            var atOrigin = new CharacterSpace(new Vector3(0f, 0f, 0f), Vector3.forward);
+            var onAHill = new CharacterSpace(new Vector3(0f, 50f, 0f), Vector3.forward);
+
+            float atOriginHeight = atOrigin.ToLocalOffset3D(new Vector3(0f, 0.1f, 0f)).y;
+            float onAHillHeight = onAHill.ToLocalOffset3D(new Vector3(0f, 50.1f, 0f)).y;
+
+            Assert.AreEqual(0.1f, atOriginHeight, 1e-4f);
+            Assert.AreEqual(atOriginHeight, onAHillHeight, 1e-4f,
+                "the same pose must produce the same feature at any altitude");
+        }
+
+        [Test]
+        public void ToLocalVector3D_IsUnaffectedByAltitude()
+        {
+            // Velocities are differences, so they were always altitude-invariant. Pinned so the
+            // height fix cannot quietly introduce an offset here.
+            var onAHill = new CharacterSpace(new Vector3(0f, 50f, 0f), Vector3.forward);
+            Vector3 velocity = new Vector3(0f, 2f, 0f);
+
+            Assert.AreEqual(2f, onAHill.ToLocalVector3D(velocity).y, 1e-4f);
+        }
     }
 }

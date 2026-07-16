@@ -437,14 +437,33 @@ namespace Kinema.MotionMatching.Editor
                 return AssetDatabase.GetAssetPath(database);
             }
 
-            string configPath = AssetDatabase.GetAssetPath(config);
-            string directory = string.IsNullOrEmpty(configPath) ? "Assets" : Path.GetDirectoryName(configPath);
-            string path = AssetDatabase.GenerateUniqueAssetPath($"{directory}/{config.name}Database.asset".Replace("\\", "/"));
+            string path = AssetDatabase.GenerateUniqueAssetPath(CanonicalDatabasePath(config));
 
             AssetDatabase.CreateAsset(database, path);
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
             return path;
+        }
+
+        /// <summary>Where a config's database lives by convention: named after the config, beside it.</summary>
+        private static string CanonicalDatabasePath(MotionMatchingConfig config)
+        {
+            string configPath = AssetDatabase.GetAssetPath(config);
+            string directory = string.IsNullOrEmpty(configPath) ? "Assets" : Path.GetDirectoryName(configPath);
+            return $"{directory}/{config.name}Database.asset".Replace("\\", "/");
+        }
+
+        /// <summary>
+        /// The database this config has already baked, or null if it never has. Callers that pass the
+        /// result back into <see cref="Bake"/> update that database in place; callers that pass null
+        /// get a *new* asset every time and leave the scene's controllers pointed at the old one -
+        /// which reads as "rebaking changes nothing" while the project quietly fills with orphans.
+        /// Resolved by the same naming convention <see cref="SaveDatabase"/> writes.
+        /// </summary>
+        public static MotionMatchingDatabase FindDatabaseFor(MotionMatchingConfig config)
+        {
+            if (config == null) return null;
+            return AssetDatabase.LoadAssetAtPath<MotionMatchingDatabase>(CanonicalDatabasePath(config));
         }
 
         #endregion
