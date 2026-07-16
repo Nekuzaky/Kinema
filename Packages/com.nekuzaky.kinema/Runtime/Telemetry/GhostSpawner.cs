@@ -39,7 +39,7 @@ namespace Kinema.MotionMatching
         /// With <paramref name="rig"/> set, the ghost is built on that model instead of a clone.
         /// Returns null when the recording is unusable.
         /// </summary>
-        public static GameObject Spawn(MotionMatchingController source, SessionRecording recording, bool loop, Color tint, GameObject rig = null)
+        public static GameObject Spawn(MotionMatchingController source, SessionRecording recording, bool loop, Color tint, GameObject rig = null, bool exact = true)
         {
             if (source == null || recording == null || !recording.IsValid) return null;
 
@@ -56,6 +56,10 @@ namespace Kinema.MotionMatching
             // Global effect: forcing the clock here would dictate the live player's frame rate too.
             replay.ForceRecordedTimestep = false;
             replay.PlayOnStart = true;
+            // Exact by default: reproduce the original transform and selected frames, not re-match
+            // the intent. A ghost on a *different* rig cannot show the source database's frames, so
+            // it falls back to intent replay (retargeting is the whole point there).
+            replay.ExactReplay = exact && rig == null;
             ghost.GetComponent<MotionMatchingController>().SetLocomotionProvider(replay);
 
             // Capture the ghost's own performance from its first frame, so it can be baked to a clip.

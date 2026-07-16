@@ -29,6 +29,9 @@ namespace Kinema.MotionMatching
         [Tooltip("Snap the character back to the recorded start pose when the replay begins.")]
         [SerializeField] private bool _restoreStartPose = true;
 
+        [Tooltip("Frame-perfect copy: replay the recorded transform AND the recorded database frame each step, instead of re-matching the recorded intent. A ghost then reproduces the original exactly rather than making its own (equally valid) decisions.")]
+        [SerializeField] private bool _exactReplay;
+
         public Vector3 DesiredVelocity => _playing ? Current.DesiredVelocity : Vector3.zero;
         public Vector3 DesiredFacing => _playing ? Current.DesiredFacing : Vector3.zero;
 
@@ -47,6 +50,9 @@ namespace Kinema.MotionMatching
         public bool RestoreStartPose { get => _restoreStartPose; set => _restoreStartPose = value; }
 
         public bool PlayOnStart { get => _playOnStart; set => _playOnStart = value; }
+
+        /// <summary>Frame-perfect reproduction (transform + recorded database frame). Set before <see cref="Play"/>.</summary>
+        public bool ExactReplay { get => _exactReplay; set => _exactReplay = value; }
 
         /// <summary>Freezes the replay clock so a timeline can scrub without the tape advancing.</summary>
         public bool Paused { get; set; }
@@ -68,6 +74,7 @@ namespace Kinema.MotionMatching
 
         private bool _playing;
         private int _index;
+        private MotionMatchingController _controller; // exact replay drives it directly
 
         private SessionFrame Current =>
             _recording != null && _index >= 0 && _index < _recording.FrameCount
@@ -96,8 +103,23 @@ namespace Kinema.MotionMatching
                 else { Stop(); return; }
             }
 
+            if (_exactReplay) ApplyExactFrame();
+
             if (_forceRecordedTimestep)
                 Time.captureDeltaTime = Mathf.Max(1e-4f, Current.DeltaTime);
+        }
+
+        /// <summary>
+        /// Frame-perfect step: snap the transform to the recorded position/rotation and force the
+        /// controller onto the exact database frame that was selected then. The copy reproduces the
+        /// original rather than re-deciding - which is the difference between "redoes the trajectory"
+        /// and "an exact ghost".
+        /// </summary>
+        private void ApplyExactFrame()
+        {
+            SessionFrame frame = Current;
+            transform.SetPositionAndRotation(frame.Position, frame.Rotation);
+            if (_controller != null) _controller.ShowDatabaseFrame(frame.SelectedFrame);
         }
 
         #endregion
@@ -109,7 +131,17 @@ namespace Kinema.MotionMatching
             if (_recording == null || !_recording.IsValid) return;
             _index = 0;
             _playing = true;
+
+            if (_exactReplay)
+            {
+                _controller = GetComponent<MotionMatchingController>();
+                // The recording drives the transform; the Animator's own root motion would fight it.
+                var animator = GetComponent<Animator>();
+                if (animator != null) animator.applyRootMotion = false;
+            }
+
             ApplyStartPose();
+            if (_exactReplay) ApplyExactFrame();
             if (_forceRecordedTimestep)
                 Time.captureDeltaTime = Mathf.Max(1e-4f, Current.DeltaTime);
         }
@@ -143,6 +175,14 @@ namespace Kinema.MotionMatching
             else
             {
                 transform.SetPositionAndRotation(at.Position, at.Rotation);
+            }
+
+            // Exact mode: also snap the pose to the recorded frame, so scrubbing shows the real
+            // selection at that instant instead of a re-matched approximation.
+            if (_exactReplay)
+            {
+                if (_controller == null) _controller = GetComponent<MotionMatchingController>();
+                if (_controller != null) _controller.ShowDatabaseFrame(at.SelectedFrame);
             }
         }
 

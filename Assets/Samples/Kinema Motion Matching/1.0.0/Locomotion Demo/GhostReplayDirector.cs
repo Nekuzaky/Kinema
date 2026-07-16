@@ -38,6 +38,9 @@ namespace Kinema.MotionMatching.Samples
         [Tooltip("Optional: build ghosts on this Humanoid model instead of cloning the player.")]
         [SerializeField] private GameObject _ghostRig;
 
+        [Tooltip("Exact: the ghost reproduces the recorded transform and frames precisely. Off: it re-matches the recorded intent through its own search (the 'AI redoes your trajectory' behaviour), which can differ slightly.")]
+        [SerializeField] private bool _exactGhosts = true;
+
         public bool IsRecording => _sessionRecorder.IsRecording;
         public int GhostCount { get { PruneGhosts(); return _ghosts.Count; } }
         public float LastTakeDuration => _lastRecording != null ? _lastRecording.Duration : 0f;
@@ -146,7 +149,7 @@ namespace Kinema.MotionMatching.Samples
                 return;
             }
 
-            GameObject ghost = GhostSpawner.Spawn(_controller, _lastRecording, _loopGhosts, _ghostColor, _ghostRig);
+            GameObject ghost = GhostSpawner.Spawn(_controller, _lastRecording, _loopGhosts, _ghostColor, _ghostRig, _exactGhosts);
             if (ghost == null) return;
 
             PruneGhosts();

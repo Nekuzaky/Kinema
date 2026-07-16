@@ -1002,6 +1002,30 @@ namespace Kinema.MotionMatching
             ApplySlotTimes();
         }
 
+        /// <summary>
+        /// Force-displays one baked database frame - the exact pose it carries, matching suspended.
+        /// An exact ghost replay calls this every frame with the recorded selection so the copy is
+        /// frame-identical to the original instead of re-matched from intent.
+        /// </summary>
+        public void ShowDatabaseFrame(int frameIndex)
+        {
+            if (!_initialized || _database == null) return;
+            if (frameIndex < 0 || frameIndex >= _database.FrameCount) return;
+
+            MotionFrameInfo info = _database.GetFrame(frameIndex);
+            _clipOverride = true;
+            OverridePaused = true;
+            _activeEvent = null;
+            _blending = false;
+
+            ApplySlotState(_activeSlot, info.ClipIndex, info.Time);
+            ApplySlotState(1 - _activeSlot, info.ClipIndex, info.Time);
+            _mixer.SetInputWeight(_activeSlot, 1f);
+            _mixer.SetInputWeight(1 - _activeSlot, 0f);
+            ApplySlotTimes();
+            _graph.Evaluate(0f);
+        }
+
         /// <summary>Hands control back to the matcher; the next search runs immediately.</summary>
         public void StopClipOverride()
         {

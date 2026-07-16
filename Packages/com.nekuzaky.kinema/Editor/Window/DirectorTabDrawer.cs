@@ -26,6 +26,7 @@ namespace Kinema.MotionMatching.Editor
         private int _selectedClip = -1;
         private string _saveMessage;
         private bool _loopGhosts = true;
+        private bool _exactGhosts = true;
         private SessionRecording _lastRecording;
         private GameObject _swapRig;
         private GameObject _ghostRig;
@@ -474,11 +475,12 @@ namespace Kinema.MotionMatching.Editor
                 using (new EditorGUILayout.HorizontalScope())
                 {
                     _loopGhosts = GUILayout.Toggle(_loopGhosts, "Loop", GUILayout.Width(60));
+                    _exactGhosts = GUILayout.Toggle(_exactGhosts, "Exact", GUILayout.Width(64));
 
                     using (new EditorGUI.DisabledScope(take == null || !take.IsValid))
                     {
                         if (GUILayout.Button("Spawn Ghost"))
-                            GhostSpawner.Spawn(controller, take, _loopGhosts, GhostTint, _ghostRig);
+                            GhostSpawner.Spawn(controller, take, _loopGhosts, GhostTint, _ghostRig, _exactGhosts);
                     }
 
                     using (new EditorGUI.DisabledScope(NewestGhost(controller) == null))

@@ -4,6 +4,27 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.22.0] - 2026-07-16
+
+### Added
+- Exact ghost replay (default). A ghost now reproduces the recording frame-for-frame - the recorded
+  transform and the exact database frame that was selected then - instead of re-matching the
+  recorded intent through its own search. That is the difference the report asked for: ghosts follow
+  the player precisely rather than making their own (equally valid, slightly different) decisions.
+  - `MotionMatchingController.ShowDatabaseFrame(int)`: force-display one baked frame, matching
+    suspended - the mechanism the exact replay drives each step.
+  - `ReplayLocomotionProvider.ExactReplay`: when set, snaps the transform to the recorded
+    position/rotation and shows the recorded selected frame every step (and on scrub). Turns the
+    Animator's root motion off so it does not fight the recorded transform.
+  - Toggle exposed both in-game (`GhostReplayDirector`, Exact Ghosts) and in the Director tab
+    (Exact checkbox). Off is the previous behaviour - re-match the intent, "the AI redoes your
+    trajectory".
+- A ghost built on a *different* rig stays on intent replay: it cannot show the source database's
+  frames, and retargeting the recorded intent onto the new body is the whole point there.
+
+101/101 EditMode tests. All four assemblies Roslyn-compiled clean (editor holds the Unity lock);
+exact replay is not playtested here.
+
 ## [1.21.1] - 2026-07-16
 
 ### Fixed
