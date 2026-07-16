@@ -1,9 +1,9 @@
 # TODO / Known Limitations
 
 Honest gap list. The architecture and tooling are AAA-informed and cover a wide feature surface
-(see the [wiki](https://github.com/Nekuzaky/Kinema/wiki)), but the project is young: few real
-play hours, no mocap data, no automated coverage of runtime behaviour. This file tracks what's
-left, roughly in priority order within each section.
+(see the [wiki](https://github.com/Nekuzaky/Kinema/wiki)), but the project is young: few real play
+hours, and the thing no test can settle - whether the motion *reads* right on screen - is still
+largely unjudged. This file tracks what's left, roughly in priority order within each section.
 
 ## Data
 
@@ -27,7 +27,7 @@ left, roughly in priority order within each section.
 - [x] **Profiled: many characters searching concurrently.** `MotionMatcher.ScheduleSearch`/
       `CompleteSearch` split the existing `Search` into a non-blocking schedule and a completion
       step, so N matchers' Burst jobs can run concurrently instead of each blocking the main thread
-      in series (today's actual behaviour - no controller batches yet, this is a building block).
+      in series.
       `Tools > Kinema > Benchmark Search` now measures both at N = 8/32/128 synthetic characters:
       batched came out ~1.7-1.8x faster than sequential at every N tested here. Correctness (batched
       result == synchronous `Search` result, including tag/ignore-range filters) is unit tested.
@@ -58,14 +58,18 @@ left, roughly in priority order within each section.
       `SwitchDatabase`, ~60 ticks of scripted intent sweeps with frame/clip mapping asserted in
       range, the `SetMatchingActive` fade surviving ticking, and disable/re-enable teardown/rebuild.
       Run headless: `-runTests -testPlatform PlayMode` (no `-nographics`).
-- [x] **PlayMode coverage for motion events + root-motion bounds** -
-      `Tests/Runtime/MotionEventPlayModeTests`: event root-warping measurably lands on its target
-      by contact time (position and yaw, fixed timestep via `Time.captureDeltaTime`), the event
-      ends on its own at clip end and matching resumes, and root motion stays bounded under
-      constant intent. Test-authoring gotcha discovered on the way, worth remembering: a synthetic
-      clip must never animate the ROOT transform - any root curve on any clip connected to the
-      mixer keeps that property graph-owned even at weight 0, and every Evaluate stomps the event
-      warp's transform writes (real mocap carries root motion through the Animator instead).
+- [x] **PlayMode coverage for motion events** - `Tests/Runtime/MotionEventPlayModeTests`: event
+      root-warping measurably lands on its target by contact time (position and yaw), the event ends
+      on its own at clip end and matching resumes, and ticking never diverges or goes NaN. All at a
+      fixed timestep the test owns (`TickMode.Manual` + `Step`), not a yielded frame.
+      Test-authoring gotcha discovered on the way, worth remembering: a synthetic clip must never
+      animate the ROOT transform - any root curve on any clip connected to the mixer keeps that
+      property graph-owned even at weight 0, and every Evaluate stomps the event warp's transform
+      writes (real mocap carries root motion through the Animator instead).
+- [ ] Root motion itself is still unasserted: the synthetic rig has no source of it (see above -
+      its clips animate a child bone by design, and nothing else drives the transform), so the
+      suite can only prove the character does not diverge, never that it travels. Needs the same
+      Humanoid-with-Animator rig the IK gap below is waiting on.
 - [ ] PlayMode coverage still missing for: inertializer output and foot lock IK - both need a
       Humanoid rig with an IK pass, which the synthetic no-rig setup can't provide.
 - [x] **Built and smoke-tested as a standalone Windows player.** `Assets/StandaloneSmokeTest/`:
@@ -150,7 +154,7 @@ left, roughly in priority order within each section.
 
 ## Process
 
-- [x] EditMode automated tests (63 tests, `Tests/Editor`) - **done**.
+- [x] EditMode automated tests (140 tests, `Tests/Editor`) plus 17 PlayMode tests (`Tests/Runtime`) - **done**.
 - [x] **CI workflow re-added** - `.github/workflows/tests.yml`, GitHub Actions via game-ci,
       EditMode tests + coverage report as artifacts. Still needs a `UNITY_LICENSE` repository
       secret set by whoever owns the GitHub repo before it will run green (documented in the

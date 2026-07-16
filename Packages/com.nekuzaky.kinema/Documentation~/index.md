@@ -18,7 +18,8 @@ Editor (bake, window, inspectors)         Runtime (Kinema.MotionMatching)
                                             MotionMatchingController (PlayableGraph)
 ```
 
-- `Runtime` has no package dependencies.
+- `Runtime` depends on Burst and Mathematics (the search is a Burst job), and on Timeline only for
+  the optional `Kinema.MotionMatching.Timeline` assembly, which compiles only when Timeline is present.
 - `Editor` references `Runtime`.
 - `Samples~` reference `Runtime` and `Editor`, and the Input System.
 
@@ -44,9 +45,11 @@ table. `MotionMatcher.Search` runs a linear scan with a branch-and-bound early-o
 winning frame together with a per-group cost breakdown for the debug layer.
 
 The query is built from two halves:
-- the trajectory half, from the desired locomotion (`TrajectoryPredictor`, a first-order lag);
-- the pose half, copied directly from the frame currently playing, which keeps the query and the
-  candidates in the same normalized space without a live pose sampler.
+- the trajectory half, from the desired locomotion (`TrajectoryPredictor`; a critically damped spring
+  by default, with a first-order lag selectable);
+- the pose half, sampled off the rendered skeleton, so the cost function judges the pose actually on
+  screen rather than the frame the clock happens to sit on. It falls back to copying the current
+  frame when the schema's bones cannot be resolved on the rig.
 
 ## Bake pipeline
 
@@ -64,29 +67,36 @@ Locomotion intent is read from an `ILocomotionProvider`, so the same controller 
 
 ## Editor tool
 
-`Kinema > Motion Matching > Window` (Ctrl+Shift+M):
+`Tools > Kinema > Motion Matching Window` (Ctrl+Shift+M):
 
 - Overview - assets and readiness at a glance.
 - Database - baked frames, clips, feature layout, memory footprint.
-- Bake - assign rig and clips, bake or rebake.
-- Debug - live selected clip/frame, total/trajectory/pose cost, per-group breakdown (play mode).
+- Bake - assign rig and clips, bake or rebake; bake a blend space into playable grid clips.
+- Tags - author tag ranges per clip, or detect idle/walk/run/turn from the motion itself.
+- Director - play a baked clip on the live character, record, spawn ghosts, swap the rig.
+- AI - every agent's brain, goal and reason, with manual commands.
+- Debug - live clip/frame, cost breakdown, snapshot rewind and diff (play mode).
+- Analysis - benchmarks and motion-quality measures.
 - Settings - weights and schema.
 
 Custom inspectors add one-click bake and a live readout; scene-view handles draw the desired and
-candidate trajectories with a cost label.
+candidate trajectories with a cost label. `Tools > Kinema > Copy Diagnostics` puts the whole scene's
+matching state on the clipboard as text.
 
 ## Extension points
 
-Next on the roadmap (behaviour-changing, best landed with in-editor playtesting):
+Shipped since this page first listed them as roadmap: inertialization transitions, the Burst/Jobs
+search over `NativeArray` features, mirroring, tags and sections, contacts and motion events, KD-tree
+acceleration, and multiple databases. See the [changelog](../CHANGELOG.md) for what landed when.
 
-- Inertialization-based pose transitions (replacing the two-slot crossfade for velocity-continuous blends).
-- Burst/Jobs-accelerated search over `NativeArray` features for large databases.
+Still open:
 
-The structure is also open for:
-
-- Mirroring (`MotionFrameInfo.IsMirrored` is reserved).
-- Tags and sections (metadata on frames/clips, filtered in `MotionMatcher.Search`).
-- Foot/hand contacts and events (additional metadata channels).
+- Learned Motion Matching (Ubisoft La Forge). The dataset export and training pipeline exist
+  (`Tools > Kinema > Learned MM > Export Training Dataset`, `Documentation~/Training/`) behind the
+  backend-agnostic `ILearnedMotionModel` seam; the Sentis backend that would run the exported ONNX
+  is not built, so the package takes no ML dependency yet.
+- Blend spaces as *runtime* data: today they bake to grid clips ahead of time (`BlendSpaceBaker`)
+  rather than being blended on demand.
 - Search acceleration (replace the linear scan with a KD-tree or PCA projection behind `MotionMatcher`).
 - Multiple databases (a selector layer above the controller).
 

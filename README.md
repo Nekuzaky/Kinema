@@ -128,8 +128,8 @@ Unity Package Manager, "Add package from git URL":
 https://github.com/Nekuzaky/kinema.git?path=/Packages/com.nekuzaky.kinema
 ```
 
-Requires Unity 6000.3+. The sample uses the Input System package; the runtime has no package
-dependencies.
+Requires Unity 6000.3+. The runtime depends on Burst and Mathematics, both resolved automatically by
+the Package Manager; the sample additionally uses the Input System.
 
 ## Quick start
 
@@ -164,22 +164,26 @@ Assets/ Unity project shell and the imported demo
 
 ## Testing
 
-`Packages/com.nekuzaky.kinema/Tests/Editor` holds EditMode tests covering the feature schema layout,
-the Timeline mixer, blend-space math, snapshot diffing, gait classification, the batched search path,
-`CharacterSpace` round-trips, the trajectory history ring buffer, the database's
-normalization/accessors, idle-duplicate pruning, and end-to-end matcher correctness (nearest-
-neighbour, tag filtering, ignore ranges, phase cost) against synthetic databases built directly
-through `SetBakedData` - no rig or bake pipeline required. Run them from Unity's Test Runner window
-(`Window > General > Test Runner`, EditMode tab) or headless:
+`Packages/com.nekuzaky.kinema/Tests/Editor` holds EditMode tests covering the feature schema layout
+and pose cost modes, the Timeline mixer, blend-space math and the blend-space bake, mirroring,
+snapshot diffing, gait classification and auto-tag apply, search LOD, the batched search path,
+`CharacterSpace` round-trips and altitude invariance, the trajectory history ring buffer, the
+database's normalization/accessors, idle-duplicate pruning, config-to-database identity, and
+end-to-end matcher correctness (nearest-neighbour, tag filtering, ignore ranges, phase cost) against
+synthetic databases built directly through `SetBakedData` - no rig or bake pipeline required. Run
+them from Unity's Test Runner window (`Window > General > Test Runner`, EditMode tab) or headless:
 
 ```
 Unity -batchmode -projectPath . -runTests -testPlatform EditMode -testResults results.xml
 ```
 
-`Tests/Runtime` holds PlayMode tests that drive a real controller (live PlayableGraph, real
-searches) on a synthetic database - run with `-testPlatform PlayMode` (drop `-nographics`). They own
-the clock through `TickMode.Manual` + `Step(dt)` rather than yielding frames, so each test's timeline
-is exactly the steps it takes: plain `[Test]`, no coroutines, no frame-pacing dependency.
+`Tests/Runtime` holds PlayMode tests that drive a real controller (live PlayableGraph, real searches)
+on a synthetic database, plus AI agents steering against real colliders - run with
+`-testPlatform PlayMode` (drop `-nographics`). They own the clock through `TickMode.Manual` +
+`Step(dt)` rather than yielding frames, so each test's timeline is exactly the steps it takes: plain
+`[Test]`, no coroutines, no frame-pacing dependency. That is load-bearing, not tidiness: the AI's
+steer is smoothed against dt, and a headless frame lasts microseconds, so yielded frames made every
+agent read as "not steering" whatever it had decided.
 `Assets/StandaloneSmokeTest/` builds a headless Win64 player that ticks a controller for 60 real
 frames and prints a `[KinemaSmoke]` verdict.
 

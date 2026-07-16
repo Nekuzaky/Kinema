@@ -22,11 +22,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Baked grid clips inherit `PoseClipBaker`'s limitation: transform-curve (Generic) clips, which a
   Humanoid Animator ignores in favour of muscle data. The baker warns rather than letting you find
   out on an empty playback.
-- The CHANGELOG had no entries for 1.33-1.39 (those versions shipped without documenting here);
-  this entry does not attempt to reconstruct them.
-
 133/133 EditMode tests (13 new: pose-blend maths, and an end-to-end bake asserting a 3x1 grid
 between a 0-degree and a 90-degree source reproduces each end and gives 45 degrees in the middle).
+
+## [1.39.0] - 2026-07-16
+
+Backfilled: 1.33 through 1.39 shipped without entries here. Reconstructed from the tagged commits,
+which is why these are shorter than the surrounding releases - see the git history for the full
+reasoning each one carries.
+
+### Changed
+- One log channel (`KinemaLog`), off by default, reporting transitions only.
+
+## [1.38.0] - 2026-07-16
+
+### Added
+- `Tools > Kinema > Copy Diagnostics`: the whole scene's matching setup as pasteable text, from the
+  window header on every tab - the moment worth capturing is never the moment to go hunting through
+  a menu.
+
+## [1.37.0] - 2026-07-16
+
+### Added
+- `MirrorPoseTests`: pins the mirror reflection before a database is doubled with it. Mirroring
+  fails quietly, so the reflection is worth pinning on its own.
+
+## [1.36.0] - 2026-07-16
+
+### Added
+- Motion-quality measures: a way to put a number on what "robotic" actually is.
+
+## [1.35.0] - 2026-07-16
+
+### Fixed
+- The body never turned. The character's only source of rotation was the clips' root motion, and a
+  strafe set (like most locomotion captures) has rotation only in its idle turns - so facing a new
+  direction meant stopping, playing an idle turn, and setting off again.
+
+### Added
+- A rig skeleton toggle.
+
+## [1.34.0] - 2026-07-16
+
+### Fixed
+- Ground IK crouched the character every step. `GroundAdaptationIK` never checked which feet were
+  planted, so it treated every stride's swing foot - sitting ~0.25 m above the floor - as a planted
+  foot that had sunk, and dragged the pelvis down by that much.
+
+## [1.33.0] - 2026-07-16
+
+### Fixed
+- "The AI does random things" was the AI crouch-walking and running on jump clips: the demo gave
+  `StanceTagController` to the player only, so an AI searched the entire database - crouch and jump
+  clips included - and the cost function did exactly its job over a candidate set nobody had
+  narrowed.
 
 ## [1.32.0] - 2026-07-16
 
