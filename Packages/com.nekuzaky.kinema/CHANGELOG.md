@@ -4,6 +4,15 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.20.3] - 2026-07-16
+
+### Fixed
+- Character walked off on its own at Play with no input touched. `LocomotionInputProvider` read
+  `<Gamepad>/leftStick` with no deadzone gate, so any resting drift (a controller rarely centres at
+  exactly zero) fed a constant desired velocity. A `_stickDeadzone` (default 0.2) now zeroes stick
+  magnitude below the threshold; keyboard input is 0 or 1 so it is unaffected. Unplugging the
+  controller was the other workaround.
+
 ## [1.20.2] - 2026-07-16
 
 ### Fixed

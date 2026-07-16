@@ -27,6 +27,9 @@ namespace Kinema.MotionMatching.Samples
         [Tooltip("How quickly the desired velocity chases the input. Higher = snappier.")]
         [SerializeField, Min(0f)] private float _inputSharpness = 12f;
 
+        [Tooltip("Stick magnitude below this reads as centred - kills gamepad drift walking the character off on its own.")]
+        [SerializeField, Range(0f, 0.5f)] private float _stickDeadzone = 0.2f;
+
         public Vector3 DesiredVelocity => _desiredVelocity;
 
         /// <summary>
@@ -84,6 +87,12 @@ namespace Kinema.MotionMatching.Samples
         {
             _strafe = _strafeAction.IsPressed();
             Vector2 move = _moveAction.ReadValue<Vector2>();
+
+            // Deadzone: a gamepad stick rarely rests at exactly zero, and even 5% drift here would
+            // feed a constant desired velocity - the character walks off with no input touched, the
+            // "it moves on its own at Play" report. Below the threshold the stick reads as centred;
+            // keyboard input is 0 or 1 so this never affects it.
+            if (move.sqrMagnitude < _stickDeadzone * _stickDeadzone) move = Vector2.zero;
 
             Vector3 forward = _cameraTransform != null ? Flatten(_cameraTransform.forward) : Vector3.forward;
             Vector3 right = _cameraTransform != null ? Flatten(_cameraTransform.right) : Vector3.right;
