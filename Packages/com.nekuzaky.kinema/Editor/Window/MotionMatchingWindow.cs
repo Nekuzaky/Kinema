@@ -453,6 +453,36 @@ namespace Kinema.MotionMatching.Editor
 
         #region Tools and Utilities — Debug
 
+        /// <summary>
+        /// Scene-view skeleton toggle. Written through a SerializedObject rather than the field so it
+        /// records for undo and marks the scene dirty like any other inspector edit.
+        /// </summary>
+        private void DrawSkeletonToggle()
+        {
+            var serialized = new SerializedObject(_controller);
+            SerializedProperty draw = serialized.FindProperty("_drawSkeleton");
+            SerializedProperty color = serialized.FindProperty("_skeletonColor");
+
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                EditorGUI.BeginChangeCheck();
+                bool on = EditorGUILayout.ToggleLeft("Show rig skeleton", draw.boolValue, GUILayout.Width(140));
+                Color tint = EditorGUILayout.ColorField(color.colorValue, GUILayout.Width(60));
+                if (EditorGUI.EndChangeCheck())
+                {
+                    draw.boolValue = on;
+                    color.colorValue = tint;
+                    serialized.ApplyModifiedProperties();
+                    SceneView.RepaintAll();
+                }
+
+                GUILayout.Label(draw.boolValue
+                        ? "Every bone to its parent; the schema's bones ringed."
+                        : "Draws the rig hierarchy in the scene view.",
+                    MotionMatchingStyles.KeyLabel);
+            }
+        }
+
         private void DrawDebug()
         {
             EditorGUI.BeginChangeCheck();
@@ -464,6 +494,12 @@ namespace Kinema.MotionMatching.Editor
                 MotionMatchingStyles.HelpRow("Select a GameObject with a MotionMatchingController, or enter Play mode. Live matching state appears here.", MessageType.Info);
                 return;
             }
+
+            // Above the play-mode gate: a rig is inspected in edit mode, and a missing or misnamed
+            // bone is a thing you want to see before pressing play, not after wondering why the pose
+            // cost is nonsense.
+            DrawSkeletonToggle();
+
             if (!Application.isPlaying)
             {
                 MotionMatchingStyles.HelpRow("Enter Play mode to see live matching data.", MessageType.Info);

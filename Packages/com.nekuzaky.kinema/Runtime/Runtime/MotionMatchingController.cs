@@ -99,6 +99,24 @@ namespace Kinema.MotionMatching
         [Tooltip("How quickly the warp factor follows a speed change. Higher = snappier, lower = smoother.")]
         [SerializeField, Range(1f, 30f)] private float _strideWarpSharpness = 10f;
 
+        [Header("Facing")]
+        // Without this the body's only source of rotation is the clips' own root motion, which is
+        // correct only if the capture contains turns at every speed. Most locomotion sets do not:
+        // they are strafe sets, with turns captured from a standstill and none while moving. On one
+        // of those a character physically cannot change direction without stopping first, because
+        // the only clips carrying any rotation are the idle turns.
+        [Tooltip("Turn the body toward where it is going. Off = facing comes only from the clips' " +
+                 "root rotation, which needs a capture containing turns at every speed.")]
+        [SerializeField] private bool _turnToFacing = true;
+
+        [Tooltip("Fastest the body turns (degrees/second).")]
+        [SerializeField, Range(0f, 720f)] private float _maxTurnRate = 360f;
+
+        [Tooltip("Below this speed (m/s) the body does not turn itself: there is no travel direction " +
+                 "to face, and turning on the spot is what the idle-turn clips are for - their root " +
+                 "rotation would fight this one.")]
+        [SerializeField, Range(0f, 2f)] private float _turnMinSpeed = 0.3f;
+
         [Header("Trajectory Prediction")]
         [SerializeField] private TrajectoryPredictionSettings _prediction = TrajectoryPredictionSettings.Default;
 
@@ -125,6 +143,12 @@ namespace Kinema.MotionMatching
 
         [Header("Debug")]
         [SerializeField] private bool _drawGizmos = true;
+
+        [Tooltip("Draw the rig's bone hierarchy in the scene view. Toggleable from the window's Debug tab.")]
+        [SerializeField] private bool _drawSkeleton;
+
+        [Tooltip("Skeleton colour. The schema's own bones are drawn thicker, in Bone Color.")]
+        [SerializeField] private Color _skeletonColor = new Color(1f, 1f, 1f, 0.35f);
         [SerializeField] private Color _desiredTrajectoryColor = new Color(0.2f, 0.8f, 1f);
         [SerializeField] private Color _candidateTrajectoryColor = new Color(1f, 0.7f, 0.1f);
         [SerializeField] private Color _boneColor = new Color(0.4f, 1f, 0.5f);
@@ -400,6 +424,12 @@ namespace Kinema.MotionMatching
 
         private void OnDrawGizmos()
         {
+            // Independent of the matching gizmos: the skeleton is what you turn on when you suspect
+            // the rig rather than the search - a bone the schema names but the rig does not have,
+            // retargeting landing somewhere unexpected, IK bending a leg the wrong way. None of that
+            // needs the matcher to be initialized, and it is often exactly why it is not.
+            if (_drawSkeleton && _animator != null) DrawSkeleton();
+
             if (!_drawGizmos || !_initialized || !_debug.HasData) return;
             DrawDebugGizmos();
         }
@@ -561,6 +591,11 @@ namespace Kinema.MotionMatching
             }
             else
             {
+                // Before the prediction, which is expressed in character space: turning the body
+                // changes that space, so predicting first would answer for the facing of the frame
+                // just gone.
+                ApplyFacing(dt);
+
                 // Prediction runs every frame (it is a handful of exponentials); the search itself
                 // is the expensive part and stays gated.
                 PredictDesiredTrajectory();
@@ -722,6 +757,42 @@ namespace Kinema.MotionMatching
                 if (e.time > from && e.time <= to && !string.IsNullOrEmpty(e.functionName))
                     gameObject.SendMessage(e.functionName, e, SendMessageOptions.DontRequireReceiver);
             }
+        }
+
+        /// <summary>
+        /// Turns the body toward where it is going, bounded by <see cref="_maxTurnRate"/>.
+        ///
+        /// This is deliberately not left to the animation. A clip only rotates the character if the
+        /// actor turned while it was captured, and a locomotion set that has turns at every speed is
+        /// rare - most are strafe sets, with the turns shot from a standstill. On one of those,
+        /// relying on root rotation alone means the character can only change direction by stopping,
+        /// playing an idle turn, and setting off again, because those are the only clips with any
+        /// rotation in them.
+        ///
+        /// Below <see cref="_turnMinSpeed"/> it does nothing: there is no travel direction to face,
+        /// and turning on the spot is exactly what the idle-turn clips do - both rotating at once
+        /// would double the turn.
+        /// </summary>
+        private void ApplyFacing(float dt)
+        {
+            if (!_turnToFacing || dt <= 0f) return;
+
+            Vector3 facing = _locomotion != null ? _locomotion.DesiredFacing : Vector3.zero;
+            facing.y = 0f;
+
+            if (facing.sqrMagnitude < 1e-6f)
+            {
+                // No explicit facing (the usual case): face where we are trying to go.
+                Vector3 velocity = _locomotion != null ? _locomotion.DesiredVelocity : _desiredVelocity;
+                velocity.y = 0f;
+                if (velocity.magnitude < _turnMinSpeed) return;
+                facing = velocity;
+            }
+
+            transform.rotation = Quaternion.RotateTowards(
+                transform.rotation,
+                Quaternion.LookRotation(facing.normalized, Vector3.up),
+                _maxTurnRate * dt);
         }
 
         private void PredictDesiredTrajectory()
@@ -1392,6 +1463,42 @@ namespace Kinema.MotionMatching
             GUI.Label(rect, content, style);
             UnityEditor.Handles.EndGUI();
 #endif
+        }
+
+        /// <summary>
+        /// The rig's bone hierarchy: a line from every transform to its parent, with the schema's own
+        /// bones marked. Walks the transforms rather than the Animator's humanoid map on purpose -
+        /// the schema names bones by their transform name, so this shows the same hierarchy the bake
+        /// and the query resolve against, including any bone the rig is missing.
+        /// </summary>
+        private void DrawSkeleton()
+        {
+            Transform root = _animator.transform;
+            Gizmos.color = _skeletonColor;
+
+            foreach (Transform bone in root.GetComponentsInChildren<Transform>(true))
+            {
+                if (bone == root || bone.parent == null) continue;
+                Gizmos.DrawLine(bone.parent.position, bone.position);
+            }
+
+            // The bones the cost function actually looks at, called out from the rest.
+            FeatureSchema schema = _database != null ? _database.Schema : null;
+            if (schema?.BoneNames == null) return;
+
+            Gizmos.color = _boneColor;
+            foreach (string name in schema.BoneNames)
+            {
+                Transform bone = FindBoneByName(root, name);
+                if (bone != null) Gizmos.DrawWireSphere(bone.position, 0.035f);
+            }
+        }
+
+        private static Transform FindBoneByName(Transform root, string boneName)
+        {
+            foreach (Transform t in root.GetComponentsInChildren<Transform>(true))
+                if (t.name == boneName) return t;
+            return null;
         }
 
         private static void DrawBones(CharacterSpace space, Vector3[] localBones, Color color)
