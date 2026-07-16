@@ -126,6 +126,28 @@ namespace Kinema.MotionMatching
                 if (!kept) doomed.Add(behaviour);
             }
             foreach (MonoBehaviour behaviour in doomed) UnityEngine.Object.Destroy(behaviour);
+
+            StripColliders(ghost);
+        }
+
+        /// <summary>
+        /// A ghost is a recording being played back, not a body in the world: it must not collide
+        /// with anything, and nothing must collide with it.
+        ///
+        /// Colliders are not MonoBehaviours, so the whitelist above never touched them and every
+        /// ghost kept the source character's CharacterController. Two consequences, both reported as
+        /// bugs: a ghost spawns on top of the player, and two overlapping CharacterControllers get
+        /// depenetrated - the player is shoved sideways, apparently moving on its own. And because a
+        /// ghost has no motor to resolve its own movement, it drifts through the level as a roaming
+        /// capsule the player then walks into: an invisible wall.
+        ///
+        /// Disabled rather than destroyed: CharacterController is a [RequireComponent] dependency of
+        /// components the ghost keeps, and Destroy would be refused.
+        /// </summary>
+        private static void StripColliders(GameObject ghost)
+        {
+            foreach (Collider collider in ghost.GetComponentsInChildren<Collider>(true))
+                collider.enabled = false;
         }
 
         private static void Tint(GameObject ghost, Color color)

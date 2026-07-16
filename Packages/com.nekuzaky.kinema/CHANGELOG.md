@@ -4,6 +4,27 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.17.0] - 2026-07-15
+
+### Fixed
+- Ghosts collided with everything (reported as "the character moves on its own" and "invisible
+  walls" - one bug, both symptoms). `Strip` only removed MonoBehaviours, and `CharacterController`
+  is a Collider, not a MonoBehaviour: every ghost kept the source character's capsule. A ghost is
+  instantiated exactly on the player and spawns automatically when a recording stops, so two
+  overlapping CharacterControllers got depenetrated and shoved the player sideways; the ghost then
+  drifted through the level with no motor to resolve its own movement, a roaming capsule the player
+  walked into. Ghost colliders are now disabled (not destroyed - CharacterController is a
+  RequireComponent dependency of components the ghost keeps).
+
+### Changed
+- Idle pruning is off in the demo setup. It leaves surviving frames unevenly spaced in time, while
+  the controller's jump decisions reason in seconds and resolve through frames: the continuity
+  window that suppresses "the candidate is where we already are" compares timestamps, and with
+  sparse frames that gap exceeds the window even when nothing should move - suppressed jumps fire
+  anyway and the result reads as mechanical. It bought ~0.35 MB on this pack. The feature stays,
+  off by default; the demo rebakes to the full 4,705 frames.
+- Welcome popup's Documentation button now opens the wiki.
+
 ## [1.20.0] - 2026-07-16
 
 ### Added

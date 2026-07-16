@@ -324,10 +324,15 @@ namespace Kinema.MotionMatching.Samples.Editor
             var so = new SerializedObject(config);
             so.FindProperty("_rigPrefab").objectReferenceValue = rig;
             so.FindProperty("_bakeFrameRate").intValue = 30;
-            // Core-quality options: the phase term needs a nonzero weight, and 66% of this pack is
-            // near-idle, so pruning debiases the search besides shrinking it.
             so.FindProperty("_defaultWeights.FootPhase").floatValue = 0.5f;
-            so.FindProperty("_pruneIdleDuplicates").boolValue = true;
+
+            // Idle pruning stays off here. It leaves the surviving frames unevenly spaced in time,
+            // while the controller's jump decisions reason in seconds but resolve through frames:
+            // the continuity window that suppresses "the candidate is where we already are" compares
+            // the candidate's timestamp to the playhead, and with sparse frames that gap exceeds the
+            // window even when nothing should move - so suppressed jumps happen anyway and the result
+            // reads as mechanical. It buys ~0.35 MB on this pack; not worth spending demo feel on.
+            so.FindProperty("_pruneIdleDuplicates").boolValue = false;
 
             SetArray(so.FindProperty("_clips"), clips.Length, (p, i) => p.objectReferenceValue = clips[i]);
 

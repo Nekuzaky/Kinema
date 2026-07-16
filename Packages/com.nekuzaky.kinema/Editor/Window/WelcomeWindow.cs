@@ -13,7 +13,7 @@ namespace Kinema.MotionMatching.Editor
     [InitializeOnLoad]
     public static class WelcomeWindowLauncher
     {
-        private const string DocsUrl = "https://github.com/Nekuzaky/kinema/blob/main/Packages/com.nekuzaky.kinema/Documentation~/index.md";
+        private const string DocsUrl = "https://github.com/Nekuzaky/Kinema/wiki";
         private const string SponsorsUrl = "https://github.com/sponsors/Nekuzaky";
         private const string WebsiteUrl = "https://www.nekuzaky.com";
         private const string ShownVersionPrefKey = "Kinema.WelcomeShownVersion";
