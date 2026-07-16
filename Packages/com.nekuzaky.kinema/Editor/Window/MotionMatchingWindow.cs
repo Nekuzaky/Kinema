@@ -385,6 +385,72 @@ namespace Kinema.MotionMatching.Editor
                 if (!string.IsNullOrEmpty(_bakeMessage))
                     MotionMatchingStyles.HelpRow(_bakeMessage, _bakeMessageType);
             }
+
+            DrawBlendSpaceBake();
+        }
+
+        [SerializeField] private MotionMatchingBlendSpace _blendSpace;
+
+        /// <summary>
+        /// Bakes a blend space into playable grid clips. Deliberately a separate step from the
+        /// database bake: it produces AnimationClip assets you then add to the clip list above, so
+        /// the grid is reviewable (and removable) like any other clip rather than appearing inside
+        /// the database by magic.
+        /// </summary>
+        private void DrawBlendSpaceBake()
+        {
+            using (MotionMatchingStyles.BeginSection("Blend Space (optional)"))
+            {
+                _blendSpace = (MotionMatchingBlendSpace)EditorGUILayout.ObjectField(
+                    "Blend Space", _blendSpace, typeof(MotionMatchingBlendSpace), false);
+
+                if (_blendSpace == null)
+                {
+                    MotionMatchingStyles.HelpRow(
+                        "Optional. A blend space bakes its source clips into a grid of blended clips - coverage " +
+                        "between the motions you actually captured. Create → Kinema → Motion Matching → Blend Space.",
+                        MessageType.None);
+                    return;
+                }
+
+                bool ready = _blendSpace.IsReadyToBake(out string blendReason) && _config.RigPrefab != null;
+                if (!_blendSpace.IsReadyToBake(out blendReason)) MotionMatchingStyles.HelpRow(blendReason, MessageType.Warning);
+                else if (_config.RigPrefab == null) MotionMatchingStyles.HelpRow("Assign the rig above first.", MessageType.Warning);
+                else
+                {
+                    Vector2Int resolution = _blendSpace.GridResolution;
+                    MotionMatchingStyles.KeyValue("Will bake",
+                        $"{Mathf.Max(1, resolution.x) * Mathf.Max(1, resolution.y)} clips " +
+                        $"from {_blendSpace.Entries.Count} source(s)");
+                }
+
+                using (new EditorGUI.DisabledScope(!ready))
+                {
+                    if (GUILayout.Button("Bake Blend Space Clips", GUILayout.Height(24)))
+                        RunBlendSpaceBake();
+                }
+            }
+        }
+
+        private void RunBlendSpaceBake()
+        {
+            string folder = $"Assets/Kinema/BlendSpaces/{_blendSpace.Name}";
+            BlendSpaceBaker.Result result = BlendSpaceBaker.Bake(
+                _blendSpace, _config.RigPrefab, folder, _config.BakeFrameRate);
+
+            if (result.Success)
+            {
+                string warnings = result.Warnings.Count > 0 ? "\n• " + string.Join("\n• ", result.Warnings) : "";
+                _bakeMessage = $"Baked {result.Clips.Count} blend space clips → {folder}. " +
+                               $"Add them to the Clips list above, then rebake the database.{warnings}";
+                _bakeMessageType = MessageType.Info;
+                if (result.Clips.Count > 0) EditorGUIUtility.PingObject(result.Clips[0]);
+            }
+            else
+            {
+                _bakeMessage = $"Blend space bake failed: {result.Error}";
+                _bakeMessageType = MessageType.Error;
+            }
         }
 
         private void RunBake()

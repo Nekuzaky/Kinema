@@ -102,16 +102,19 @@ left, roughly in priority order within each section.
 
 ## Feature scope not started
 
-- [ ] **Blend space integration (MxM-style)** - partial. `BlendSpaceMath` (2D Gradient Band
-      Interpolation weighting, grid generation, feature-row blending - the same technique Unity's own
-      Freeform Cartesian blend trees use) and `MotionMatchingBlendSpace` (authoring asset: source
-      clips + 2D positions) are done and unit tested. NOT wired into the baker: playback
-      (`MotionMatchingController.SetSlotClip`) replays the matched frame's original `AnimationClip`,
-      not the baked feature row, so a synthetic grid point needs a real baked `AnimationClip` to be
-      *playable*, not just a blended feature row to be *matchable*. Finishing this means extending
-      `Editor/Baking/PoseClipBaker.cs` (already bakes a recording to a clip) to bake a blended pose
-      per grid point, which is new Playable-graph plumbing with no way to confirm the result looks
-      right without opening the Editor - stopped here rather than shipped unverified.
+- [x] **Blend space integration (MxM-style)** - `BlendSpaceBaker` (Bake tab → "Bake Blend Space
+      Clips") samples the source clips on the rig at each time step, blends the resulting POSES by
+      each grid point's Gradient Band weights, and writes one real AnimationClip per grid point via
+      `PoseClipBaker`. Blending in pose space rather than feature space is what closes the old gap:
+      a feature-blended grid point was matchable but unplayable, because playback replays the matched
+      frame's actual clip. The baked clips are added to the config's clip list and baked into the
+      database through the normal path, so the grid is reviewable and removable like any other clip.
+      Verified end-to-end in tests: a 3x1 grid between a 0-degree and a 90-degree source reproduces
+      each source at the ends and gives 45 degrees in the middle, and the middle clip is a real saved
+      asset with curves and length. Inherits PoseClipBaker's limitation (transform-curve/Generic
+      clips - a Humanoid Animator ignores them); surfaced as a warning rather than left to discover.
+      Not verified: how a baked grid reads on screen with real mocap, and whether Gradient Band
+      weights are the right blend for a given clip set - tune per project and playtest.
 - [x] Retargeting through Humanoid so one database serves multiple skeletons - the ghost-on-a-
       different-rig path and the Director's one-click rig swap both do this (copy settings, keep
       the database, retarget onto the new body).

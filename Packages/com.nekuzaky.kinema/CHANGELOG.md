@@ -4,6 +4,30 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.40.0] - 2026-07-16
+
+### Added
+- Blend spaces are bakeable and playable: `BlendSpaceBaker` (Bake tab → "Bake Blend Space Clips")
+  samples the source clips on the rig, blends the resulting POSES by each grid point's Gradient Band
+  weights, and writes one real AnimationClip per grid point through `PoseClipBaker`. Add the baked
+  clips to the config's clip list and rebake to make the grid matchable - so a blend space fills the
+  gaps between the motions you actually captured, and the grid stays reviewable like any other clip.
+  Blending in pose space is the point: a feature-blended grid point was matchable but unplayable,
+  since playback replays the matched frame's real clip.
+- `BlendSpaceMath.BlendRotations` / `BlendPositions`: weighted pose blending. Rotations are
+  sign-aligned to the heaviest sample before accumulating - q and -q are the same rotation but
+  cancel when summed, which collapses a blend of two visually close poses into nonsense.
+
+### Notes
+- Baked grid clips inherit `PoseClipBaker`'s limitation: transform-curve (Generic) clips, which a
+  Humanoid Animator ignores in favour of muscle data. The baker warns rather than letting you find
+  out on an empty playback.
+- The CHANGELOG had no entries for 1.33-1.39 (those versions shipped without documenting here);
+  this entry does not attempt to reconstruct them.
+
+133/133 EditMode tests (13 new: pose-blend maths, and an end-to-end bake asserting a 3x1 grid
+between a 0-degree and a 90-degree source reproduces each end and gives 45 degrees in the middle).
+
 ## [1.32.0] - 2026-07-16
 
 A pose cost that measures the transition instead of guessing at it. From Holden, *Inertialization

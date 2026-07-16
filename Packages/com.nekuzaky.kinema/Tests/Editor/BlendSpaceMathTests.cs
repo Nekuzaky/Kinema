@@ -98,6 +98,85 @@ namespace Kinema.MotionMatching.Tests
         }
 
         [Test]
+        public void BlendRotations_SingleWeight_ReturnsThatRotation()
+        {
+            var rotations = new[] { Quaternion.Euler(0f, 40f, 0f), Quaternion.Euler(0f, -90f, 0f) };
+            Quaternion result = BlendSpaceMath.BlendRotations(rotations, new[] { 1f, 0f });
+
+            Assert.Less(Quaternion.Angle(rotations[0], result), 0.01f);
+        }
+
+        [Test]
+        public void BlendRotations_HalfAndHalf_IsTheMidpoint()
+        {
+            var a = Quaternion.Euler(0f, 0f, 0f);
+            var b = Quaternion.Euler(0f, 90f, 0f);
+
+            Quaternion result = BlendSpaceMath.BlendRotations(new[] { a, b }, new[] { 0.5f, 0.5f });
+
+            // Equal weights put the blend on the arc midpoint - 45 degrees from each.
+            Assert.AreEqual(45f, Quaternion.Angle(a, result), 0.5f);
+            Assert.AreEqual(45f, Quaternion.Angle(b, result), 0.5f);
+        }
+
+        [Test]
+        public void BlendRotations_LeansTowardTheHeavierSample()
+        {
+            var a = Quaternion.Euler(0f, 0f, 0f);
+            var b = Quaternion.Euler(0f, 90f, 0f);
+
+            Quaternion result = BlendSpaceMath.BlendRotations(new[] { a, b }, new[] { 0.75f, 0.25f });
+
+            Assert.Less(Quaternion.Angle(a, result), Quaternion.Angle(b, result),
+                "a 0.75/0.25 blend must sit closer to the heavier rotation");
+        }
+
+        [Test]
+        public void BlendRotations_OppositeSignQuaternions_DoNotCancel()
+        {
+            // q and -q are the same rotation. Summed without sign alignment they annihilate, and the
+            // blend collapses; the reference-alignment step is what prevents that.
+            var q = Quaternion.Euler(0f, 30f, 0f);
+            var negated = new Quaternion(-q.x, -q.y, -q.z, -q.w);
+
+            Quaternion result = BlendSpaceMath.BlendRotations(new[] { q, negated }, new[] { 0.5f, 0.5f });
+
+            Assert.Less(Quaternion.Angle(q, result), 0.01f,
+                "blending a rotation with its own negation must return that same rotation");
+        }
+
+        [Test]
+        public void BlendRotations_AllZeroWeights_ReturnsIdentity()
+        {
+            var rotations = new[] { Quaternion.Euler(0f, 30f, 0f), Quaternion.Euler(0f, 60f, 0f) };
+            Assert.AreEqual(Quaternion.identity, BlendSpaceMath.BlendRotations(rotations, new[] { 0f, 0f }));
+        }
+
+        [Test]
+        public void BlendRotations_MismatchedInput_ReturnsIdentity()
+        {
+            Assert.AreEqual(Quaternion.identity, BlendSpaceMath.BlendRotations(null, new[] { 1f }));
+            Assert.AreEqual(Quaternion.identity,
+                BlendSpaceMath.BlendRotations(new[] { Quaternion.identity }, new[] { 1f, 0f }));
+        }
+
+        [Test]
+        public void BlendPositions_IsTheWeightedSum()
+        {
+            var positions = new[] { new Vector3(0f, 0f, 0f), new Vector3(4f, 0f, 8f) };
+            Vector3 result = BlendSpaceMath.BlendPositions(positions, new[] { 0.75f, 0.25f });
+
+            Assert.AreEqual(new Vector3(1f, 0f, 2f).x, result.x, 1e-4f);
+            Assert.AreEqual(new Vector3(1f, 0f, 2f).z, result.z, 1e-4f);
+        }
+
+        [Test]
+        public void BlendPositions_MismatchedInput_ReturnsZero()
+        {
+            Assert.AreEqual(Vector3.zero, BlendSpaceMath.BlendPositions(new[] { Vector3.one }, new[] { 1f, 0f }));
+        }
+
+        [Test]
         public void BuildGrid_SingleResolution_ReturnsCentre()
         {
             var samples = new[] { new Vector2(0, 0), new Vector2(2, 4) };

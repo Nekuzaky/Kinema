@@ -63,6 +63,9 @@ Mecanim interop.
   measurements; see the benchmark). Built on `MotionMatcher.ScheduleSearch`/`CompleteSearch`.
 - `GaitClassifier`: proposes idle/walk/run/turn tag ranges from the baked motion itself
   (`Tools > Kinema > Log Auto-Tag Suggestions`), no naming conventions involved.
+- Blend spaces (MxM-style): place source clips on a 2D plane and bake a grid of blended clips from
+  them (Bake tab), filling the gaps between the motions you actually captured. The blend runs in pose
+  space and produces real AnimationClips, so a grid point is playable, not just matchable.
 - Manual ticking: set `TickMode.Manual` and call `Step(dt)` to own the clock - fixed-step or
   server-authoritative simulation, and deterministic tests. Automatic (self-ticking) is the default.
 

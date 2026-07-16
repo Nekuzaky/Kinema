@@ -83,6 +83,69 @@ namespace Kinema.MotionMatching
             }
         }
 
+        /// <summary>
+        /// Weighted blend of rotations, for blending POSES (what a playable grid point needs) rather
+        /// than feature rows. Accumulating normalized quaternions weighted this way approximates the
+        /// true rotation average and is what every runtime blend tree does - exact for two rotations,
+        /// close enough for the small angular spreads a blend space's neighbours actually sit at.
+        ///
+        /// Each quaternion is sign-aligned to the highest-weight one before accumulating: q and -q are
+        /// the same rotation but cancel each other when summed, so an unaligned average of two visually
+        /// close poses can collapse to nonsense. Returns identity if every weight is ~0.
+        /// </summary>
+        public static Quaternion BlendRotations(Quaternion[] rotations, float[] weights)
+        {
+            if (rotations == null || weights == null || rotations.Length == 0 ||
+                rotations.Length != weights.Length)
+            {
+                return Quaternion.identity;
+            }
+
+            int reference = DominantSample(weights);
+            Quaternion referenceRotation = rotations[reference];
+
+            float x = 0f, y = 0f, z = 0f, w = 0f;
+            for (int i = 0; i < rotations.Length; i++)
+            {
+                float weight = weights[i];
+                if (weight <= 1e-6f) continue;
+
+                Quaternion q = rotations[i];
+                // Dot < 0 means q sits on the opposite hemisphere from the reference: same rotation,
+                // opposite sign. Flip it so the two reinforce instead of cancelling.
+                if (Quaternion.Dot(referenceRotation, q) < 0f) weight = -weight;
+
+                x += q.x * weight;
+                y += q.y * weight;
+                z += q.z * weight;
+                w += q.w * weight;
+            }
+
+            float magnitude = Mathf.Sqrt(x * x + y * y + z * z + w * w);
+            if (magnitude < 1e-6f) return Quaternion.identity;
+            return new Quaternion(x / magnitude, y / magnitude, z / magnitude, w / magnitude);
+        }
+
+        /// <summary>Weighted sum of positions - the translation counterpart of
+        /// <see cref="BlendRotations"/>. Weights are assumed normalized (<see cref="ComputeWeights"/>
+        /// guarantees it); near-zero weights are skipped so an irrelevant sample costs nothing.</summary>
+        public static Vector3 BlendPositions(Vector3[] positions, float[] weights)
+        {
+            if (positions == null || weights == null || positions.Length == 0 ||
+                positions.Length != weights.Length)
+            {
+                return Vector3.zero;
+            }
+
+            Vector3 result = Vector3.zero;
+            for (int i = 0; i < positions.Length; i++)
+            {
+                if (weights[i] <= 1e-6f) continue;
+                result += positions[i] * weights[i];
+            }
+            return result;
+        }
+
         /// <summary>Index of the highest-weight sample - used for data that can't be linearly blended
         /// (discrete foot-contact bits, tag masks): nearest-sample wins rather than being averaged.</summary>
         public static int DominantSample(float[] weights)
