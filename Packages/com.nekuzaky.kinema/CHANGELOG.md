@@ -4,6 +4,23 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.29.0] - 2026-07-16
+
+### Fixed
+- The AI demo scenes ran every character's search independently at full rate. `Sandbox` puts seven
+  matchers on screen (six wanderers plus the player) and neither of the two systems built for exactly
+  that case was in the scene:
+  - `MotionMatchingSearchBatch` is now in `Parkour` and `Sandbox`, so their searches are scheduled in
+    Update and completed together in LateUpdate, overlapping on Burst's worker threads instead of
+    each blocking on its own (~1.7x at 8-128 characters in local measurements). It auto-collects the
+    controllers in the scene when it enables, so runtime-spawned ghosts are picked up too.
+  - `MotionMatchingLOD` is now on every AI character, keyed to the camera: a distant wanderer
+    re-decides a quarter as often. Only AI gets it - the player is the thing you are looking at, so
+    degrading its cadence would show. This stretches the search interval only; playback and IK are
+    untouched, so a distant agent still moves smoothly.
+  Both shipped in v1.0 and were reachable only by hand-wiring them, which is to say the demo that
+  exists to show the toolkit scaling was the one place not using it.
+
 ## [1.28.0] - 2026-07-16
 
 AI agents that read the world and vary their gait. The agents already drove the same motion matching

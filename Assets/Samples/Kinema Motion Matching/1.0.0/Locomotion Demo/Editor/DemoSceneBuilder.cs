@@ -23,6 +23,18 @@ namespace Kinema.MotionMatching.Samples.Editor
 
         internal static Scene NewDemoScene() => EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
 
+        /// <summary>
+        /// Drops in the cross-character search batch. Registration is not wired here on purpose: the
+        /// batch auto-collects every controller in the scene when it enables, so it must not be
+        /// handed a list built at author time - one built now would miss anything spawned later, and
+        /// ghosts are spawned at runtime.
+        /// </summary>
+        internal static void BuildSearchBatch()
+        {
+            var batch = new GameObject("Search Batch");
+            batch.AddComponent<MotionMatchingSearchBatch>();
+        }
+
         internal static (Material ground, Material obstacle) CreateMaterials()
         {
             Material ground = CreateLit(DemoFolder + "/Materials/Ground.mat", new Color(0.22f, 0.23f, 0.26f));

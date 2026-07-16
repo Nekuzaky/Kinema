@@ -176,6 +176,12 @@ namespace Kinema.MotionMatching.Samples.Editor
                     break;
             }
 
+            // Every AI character is a full matcher, so a crowd is where the scaling work has to show
+            // up or it may as well not exist. The batch overlaps their searches on Burst's worker
+            // threads instead of letting each block on its own; it auto-collects every controller in
+            // the scene when it enables, so it needs no wiring per character.
+            if (flavor != DemoScene.Test) DemoSceneBuilder.BuildSearchBatch();
+
             DemoPresentation.Apply(player, Camera.main);
             Selection.activeGameObject = player;
 
@@ -395,6 +401,7 @@ namespace Kinema.MotionMatching.Samples.Editor
             var brain = ai.AddComponent<ScriptedAIBrain>();
             DemoSceneBuilder.SetEnum(brain, "_behaviour", 2); // FollowPlayer
             var provider = ai.AddComponent<AICommandProvider>();
+            AddSearchLOD(ai);
             // This one auto-vaults, so anything inside the vault window must not read as an obstacle:
             // 1.2 clears the trigger's 1.15 ceiling. Otherwise avoidance steers it around every wall
             // it was built to vault, and the chase never shows a vault at all.
@@ -408,7 +415,23 @@ namespace Kinema.MotionMatching.Samples.Editor
             (GameObject ai, _) = BuildBody(rig, db, vault, jumpM, jumpI, "AI Wanderer", position, autoVault: false);
             ai.AddComponent<ScriptedAIBrain>(); // Wander by default
             ai.AddComponent<AICommandProvider>();
+            AddSearchLOD(ai);
             Tint(ai, new Color(0.5f, 0.8f, 0.55f)); // green, distinct from player and follower
+        }
+
+        /// <summary>
+        /// Search LOD on an AI character, keyed to the camera. Only AI gets this: the player is
+        /// always the thing you are looking at, so degrading its search cadence would be visible
+        /// immediately, while a wanderer across the arena can search a quarter as often and no one
+        /// can tell. This only stretches the search interval - playback and IK are untouched, so a
+        /// distant agent still moves smoothly, it just re-decides less often.
+        /// </summary>
+        private static void AddSearchLOD(GameObject agent)
+        {
+            var lod = agent.AddComponent<MotionMatchingLOD>();
+            DemoSceneBuilder.SetObjectReference(lod, "_controller", agent.GetComponent<MotionMatchingController>());
+            if (Camera.main != null)
+                DemoSceneBuilder.SetObjectReference(lod, "_referencePoint", Camera.main.transform);
         }
 
         /// <summary>Tints every renderer with a shared instance of a material coloured for this character type.</summary>
