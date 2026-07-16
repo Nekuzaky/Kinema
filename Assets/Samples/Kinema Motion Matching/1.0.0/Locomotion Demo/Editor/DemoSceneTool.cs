@@ -360,6 +360,10 @@ namespace Kinema.MotionMatching.Samples.Editor
             body.AddComponent<GroundAdaptationIK>();
             body.AddComponent<CharacterMotor>();
 
+            // Before the vault trigger, which reads it: one sensor per character, shared by everything
+            // that needs to know what is ahead, sensing on a timer instead of per frame per consumer.
+            body.AddComponent<ObstacleSensor>();
+
             if (vaultEvent != null || jumpMoving != null || jumpIdle != null)
             {
                 var vault = body.AddComponent<VaultTrigger>();

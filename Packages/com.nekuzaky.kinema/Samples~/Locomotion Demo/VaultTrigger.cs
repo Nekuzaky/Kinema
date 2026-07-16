@@ -25,14 +25,9 @@ namespace Kinema.MotionMatching.Samples
         [Tooltip("Free jump from standstill, when no obstacle is ahead.")]
         [SerializeField] private MotionEventDefinition _jumpIdleEvent;
 
-        [Tooltip("How far ahead an obstacle can be triggered (meters).")]
+        [Tooltip("How close the obstacle must be to trigger (meters). What counts as vaultable at all " +
+                 "is the Obstacle Sensor's call - height, thickness and landing live there.")]
         [SerializeField, Range(0.5f, 3f)] private float _maxDistance = 1.4f;
-
-        [Tooltip("Obstacle top must be at least this high above the feet to vault (meters).")]
-        [SerializeField, Range(0.1f, 1f)] private float _minObstacleHeight = 0.35f;
-
-        [Tooltip("Obstacle top must be below this height to vault (meters).")]
-        [SerializeField, Range(0.5f, 2f)] private float _maxObstacleHeight = 1.15f;
 
         [Tooltip("Vault automatically when eligible and moving toward the obstacle - for AI characters or hands-free traversal.")]
         [SerializeField] private bool _autoVault;
@@ -45,6 +40,7 @@ namespace Kinema.MotionMatching.Samples
         #region Private and Protected
 
         private MotionMatchingController _controller;
+        private ObstacleSensor _sensor;
         private InputAction _vaultAction;
 
         #endregion
@@ -54,6 +50,10 @@ namespace Kinema.MotionMatching.Samples
         private void Awake()
         {
             _controller = GetComponent<MotionMatchingController>();
+            _sensor = GetComponent<ObstacleSensor>();
+            if (_sensor == null)
+                Debug.LogWarning("[Kinema] No ObstacleSensor beside the VaultTrigger, so nothing will " +
+                                 "read as vaultable and Space will only free-jump.", this);
 
             _vaultAction = new InputAction("Vault", InputActionType.Button);
             _vaultAction.AddBinding("<Keyboard>/space");
@@ -68,7 +68,14 @@ namespace Kinema.MotionMatching.Samples
             CanVault = false;
             if (!_controller.IsInitialized || _controller.IsPlayingEvent) return;
 
-            if (_vaultEvent != null && ProbeObstacle(out RaycastHit hit))
+            // The sensor decides what is ahead; this only decides whether to act on it. Its reading
+            // is shared and already throttled, so asking costs nothing, and it is a strictly better
+            // answer than the ray this used to cast: it has measured the obstacle's thickness and
+            // checked there is floor beyond to arrive on. Without those a vault would warp the
+            // character into the middle of a deep block, or over a wall into a pit.
+            ObstacleReading ahead = _sensor != null ? _sensor.Reading : default;
+
+            if (_vaultEvent != null && ahead.Kind == ObstacleKind.Vault && ahead.Distance <= _maxDistance)
             {
                 CanVault = true;
 
@@ -77,8 +84,8 @@ namespace Kinema.MotionMatching.Samples
 
                 if (autoTriggered || _vaultAction.WasPressedThisFrame())
                 {
-                    Debug.Log($"[Kinema] Vault over '{hit.collider.name}' (top {hit.collider.bounds.max.y - transform.position.y:F2} m).", this);
-                    Vault(hit);
+                    Debug.Log($"[Kinema] Vault over '{ahead.Point}' (top {ahead.Height:F2} m, {ahead.Depth:F2} m thick).", this);
+                    Vault(ahead);
                 }
                 return;
             }
@@ -108,31 +115,19 @@ namespace Kinema.MotionMatching.Samples
             Gizmos.color = CanVault ? Color.green : Color.gray;
             Vector3 origin = transform.position + Vector3.up * 0.6f;
             Gizmos.DrawLine(origin, origin + Flatten(transform.forward) * _maxDistance);
+            // The sensor draws what it found; this only draws how close it must be to act.
         }
 
         #endregion
 
         #region Tools and Utilities
 
-        /// <summary>Chest-height ray; eligible when the hit collider's top edge sits in the vault window.</summary>
-        private bool ProbeObstacle(out RaycastHit hit)
-        {
-            Vector3 origin = transform.position + Vector3.up * 0.6f;
-            Vector3 forward = Flatten(transform.forward);
-
-            if (!Physics.Raycast(origin, forward, out hit, _maxDistance)) return false;
-            if (hit.collider.isTrigger || hit.collider.transform.IsChildOf(transform)) return false;
-
-            float top = hit.collider.bounds.max.y - transform.position.y;
-            return top >= _minObstacleHeight && top <= _maxObstacleHeight;
-        }
-
-        private void Vault(RaycastHit hit)
+        private void Vault(ObstacleReading ahead)
         {
             Vector3 forward = Flatten(transform.forward);
 
             // Contact lands just past the near edge; height comes from the clip's root arc.
-            Vector3 contact = hit.point + forward * 0.25f;
+            Vector3 contact = ahead.Point + forward * 0.25f;
             contact.y = transform.position.y;
 
             _controller.PlayEvent(_vaultEvent, contact, Quaternion.LookRotation(forward, Vector3.up));
