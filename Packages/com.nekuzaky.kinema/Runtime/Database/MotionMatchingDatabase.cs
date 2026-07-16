@@ -252,8 +252,25 @@ namespace Kinema.MotionMatching
                 DenormalizeValue(o + 1, features[baseOffset + o + 1]));
         }
 
-        /// <summary>Reconstructs the sampled bone local positions (character space, denormalized) of a baked frame.</summary>
-        public void GetBonePositions(int frameIndex, Vector3[] buffer)
+        /// <summary>
+        /// Reconstructs the sampled bone local positions (character space, denormalized) of a baked
+        /// frame.
+        /// </summary>
+        /// <remarks>
+        /// Only truthful under <see cref="PoseCostMode.Naive"/>. Use
+        /// <see cref="GetBonePoseValues"/>, which says what it returns in either mode - the composite
+        /// cannot be turned back into a position, since one number cannot be solved for the two it
+        /// was made from.
+        /// </remarks>
+        [System.Obsolete("Returns the pose feature, which is only a position in PoseCostMode.Naive. Use GetBonePoseValues.")]
+        public void GetBonePositions(int frameIndex, Vector3[] buffer) => GetBonePoseValues(frameIndex, buffer);
+
+        /// <summary>
+        /// The pose values (character space, denormalized) of a baked frame: bone positions under
+        /// <see cref="PoseCostMode.Naive"/>, the inertialization composite otherwise. Whatever the
+        /// cost function is actually comparing, which is what a debugger wants to show.
+        /// </summary>
+        public void GetBonePoseValues(int frameIndex, Vector3[] buffer)
         {
             int baseOffset = GetFeatureOffset(frameIndex);
             int posOffset = _schema.BonePositionOffset;

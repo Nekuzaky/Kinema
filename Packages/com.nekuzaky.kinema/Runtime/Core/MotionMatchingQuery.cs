@@ -79,15 +79,24 @@ namespace Kinema.MotionMatching
             int posOffset = schema.BonePositionOffset;
             int velOffset = schema.BoneVelocityOffset;
 
+            bool naive = schema.PoseMode == PoseCostMode.Naive;
+
             for (int b = 0; b < schema.BoneCount; b++)
             {
                 Vector3 localPos = space.ToLocalOffset3D(boneWorldPositions[b]);
                 Vector3 localVel = space.ToLocalVector3D(boneWorldVelocities[b]);
 
+                // Same call the baker makes. The database's normalization was fitted to whatever this
+                // returns, so computing it any other way here would normalize live numbers against
+                // statistics gathered from different ones.
+                Vector3 pose = schema.BonePoseValue(localPos, localVel);
+
                 int p = posOffset + b * 3;
-                Values[p] = database.NormalizeValue(p, localPos.x);
-                Values[p + 1] = database.NormalizeValue(p + 1, localPos.y);
-                Values[p + 2] = database.NormalizeValue(p + 2, localPos.z);
+                Values[p] = database.NormalizeValue(p, pose.x);
+                Values[p + 1] = database.NormalizeValue(p + 1, pose.y);
+                Values[p + 2] = database.NormalizeValue(p + 2, pose.z);
+
+                if (!naive) continue;
 
                 int v = velOffset + b * 3;
                 Values[v] = database.NormalizeValue(v, localVel.x);

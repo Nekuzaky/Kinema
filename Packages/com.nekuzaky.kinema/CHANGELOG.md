@@ -4,6 +4,78 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.32.0] - 2026-07-16
+
+A pose cost that measures the transition instead of guessing at it. From Holden, *Inertialization
+Transition Cost* (2022) - see [Research.md](Documentation~/Research.md) for the full reading of the
+published sources against this package.
+
+### Added
+- **`PoseCostMode.InertializationCost`** on `FeatureSchema`: one composite per bone,
+  `2*pos/y + vel/y^2`, replacing the separate bone-position and bone-velocity blocks. It is the
+  displacement an inertialized transition onto that bone would actually cause.
+
+  The naive layout - which every motion matching talk shows, and which this package shipped until
+  now - has two flaws, and both applied here verbatim:
+  - It adds positions to velocities, so the weight balancing them is arbitrary. Nothing derives it:
+    the demo carried `BoneVelocity: 0.6` because it was tuned until it looked right, and this package
+    ships a weight tuner to find that number by experiment.
+  - It evaluates the two independently, so it cannot see that a position offset is *harmless* when
+    the velocity offset is set to absorb it. It rejects transitions that would have been smooth.
+
+  Three consequences, in the order they matter: the cost measures what the transition will look like
+  rather than a proxy for it; there is no velocity weight left to tune, since it falls out of the
+  half-life; and the vector loses `3*B` dimensions - **44 -> 35** on the demo bake (T=6, B=3) - off
+  every distance evaluation and off the Learned Motion Matching training set.
+
+  `y` comes from `InertializationHalflife` through Holden's own conversion
+  (`damping = 4*ln2/halflife`, `y = damping/2`), because the number only means anything if it is the
+  one the spring the transition actually runs would use.
+
+- `FeatureSchema.BonePoseValue` is the single definition of that formula, called by both the baker
+  and the live query. They have to produce bit-identical numbers: a formula that drifted between them
+  would not look like a bug, it would look like the character simply matching badly.
+
+- `MotionMatchingDatabase.GetBonePoseValues`, replacing `GetBonePositions` (now `[Obsolete]`, still
+  forwarding). Under the composite the old name was a lie, and the composite cannot be inverted back
+  into a position - one number cannot be solved for the two it was made from.
+
+### Notes
+- **Opt-in.** `Naive` stays the default, and a config serialized without the field deserializes to
+  it, so no existing bake or scene changes meaning. Switching modes requires a rebake.
+- `IsLayoutCompatibleWith` refuses to mix modes, or half-lives within the composite mode. Two schemas
+  can agree on every count and still write different numbers into the same slots - the one
+  incompatibility that would otherwise pass silently.
+- Not measured on real data yet: what it does to the jump rate or to foot slide.
+
+## [1.31.0] - 2026-07-16
+
+### Added
+- `ObstacleSensor`: one sensor per character classifying what is ahead - Step, Vault, Gap, Blocked -
+  so a character picks an action instead of guessing, and so two consumers act on the same picture of
+  the world. Before this each cast its own rays every frame and none of them agreed: the vault
+  trigger one, the AI provider four.
+
+  Five casts per sense at 10 Hz (the matcher's own search cadence), and none while the character is
+  not moving, since a still character's surroundings are not changing - which is most of the saving
+  on a crowd, where most agents are idle at any moment. ~50 casts/second/character against the
+  ~60-240 the per-frame probes it replaces were doing.
+
+### Fixed
+- The vault path tested only the obstacle's height. It now also has:
+  - **Thickness.** A block deep enough to stand on is not something you vault, and the event warped
+    the character into the middle of it. Measured by casting back through the obstacle from beyond.
+  - **Landing.** Nothing checked there was floor on the far side, so you could vault a wall into a
+    pit.
+- The old probe had no layer mask, and a trigger volume in front of a wall made it report "not
+  vaultable" instead of being ignored.
+
+### Notes
+- No Climb kind and no Cover kind. Both are trivial to sense - a tall wall is the easiest thing in
+  there to recognise - and neither is included, because motion matching plays the data it has and a
+  locomotion capture contains no climb or cover motion. A sensor reporting an affordance the
+  character cannot perform is a lie with extra steps. They slot in as new kinds when the clips exist.
+
 ## [1.30.0] - 2026-07-16
 
 The clip-change brake never worked. This is the bug behind every "it moves on its own", "not fluid"

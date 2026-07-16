@@ -294,7 +294,7 @@ namespace Kinema.MotionMatching.Editor
 
                 int boneCount = _database.Schema.BoneCount;
                 if (_inspectBones == null || _inspectBones.Length != boneCount) _inspectBones = new Vector3[boneCount];
-                _database.GetBonePositions(frame, _inspectBones);
+                _database.GetBonePoseValues(frame, _inspectBones);
                 for (int b = 0; b < boneCount; b++)
                     MotionMatchingStyles.KeyValue(_database.Schema.BoneNames[b],
                         $"({_inspectBones[b].x:F2}, {_inspectBones[b].y:F2}, {_inspectBones[b].z:F2})  w={_database.Schema.GetBoneWeight(b):F1}");

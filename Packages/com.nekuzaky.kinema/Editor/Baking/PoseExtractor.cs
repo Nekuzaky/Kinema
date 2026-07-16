@@ -150,15 +150,25 @@ namespace Kinema.MotionMatching.Editor
             int next = Mathf.Min(f + 1, frameCount - 1);
             float span = Mathf.Max((next - prev) * dt, 1e-5f);
 
+            bool naive = schema.PoseMode == PoseCostMode.Naive;
+
             for (int b = 0; b < boneCount; b++)
             {
                 Vector3 localPos = space.ToLocalOffset3D(bonePos[f * boneCount + b]);
                 Vector3 worldVel = (bonePos[next * boneCount + b] - bonePos[prev * boneCount + b]) / span;
                 Vector3 localVel = space.ToLocalVector3D(worldVel);
 
-                features[posOffset + b * 3] = localPos.x;
-                features[posOffset + b * 3 + 1] = localPos.y;
-                features[posOffset + b * 3 + 2] = localPos.z;
+                // Through the schema, never inline: the live query writes the same slots from the
+                // same method, and a formula that drifted between the two would not look like a bug -
+                // it would look like the character simply matching badly.
+                Vector3 pose = schema.BonePoseValue(localPos, localVel);
+                features[posOffset + b * 3] = pose.x;
+                features[posOffset + b * 3 + 1] = pose.y;
+                features[posOffset + b * 3 + 2] = pose.z;
+
+                if (!naive)
+                    continue; // the composite already carries the velocity; the group is empty.
+
                 features[velOffset + b * 3] = localVel.x;
                 features[velOffset + b * 3 + 1] = localVel.y;
                 features[velOffset + b * 3 + 2] = localVel.z;

@@ -356,12 +356,16 @@ namespace Kinema.MotionMatching.Editor
                     row[dx] = -features[src + dx]; row[dx + 1] = features[src + dx + 1];
                 }
 
-                // Bones: swap L/R slots, flip x of positions and velocities.
+                // Bones: swap L/R slots, flip x of positions and velocities. The composite mirrors the
+                // same way - it is a linear combination of a position and a velocity, so negating its
+                // x negates exactly the x of both, which is what mirroring means.
                 for (int b = 0; b < schema.BoneCount; b++)
                 {
                     int dst = schema.BonePositionOffset + b * 3;
                     int from = schema.BonePositionOffset + bonePair[b] * 3;
                     row[dst] = -features[src + from]; row[dst + 1] = features[src + from + 1]; row[dst + 2] = features[src + from + 2];
+
+                    if (schema.PoseMode != PoseCostMode.Naive) continue; // no velocity group to mirror.
 
                     dst = schema.BoneVelocityOffset + b * 3;
                     from = schema.BoneVelocityOffset + bonePair[b] * 3;

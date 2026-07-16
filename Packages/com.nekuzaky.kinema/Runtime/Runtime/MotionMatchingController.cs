@@ -1321,8 +1321,8 @@ namespace Kinema.MotionMatching
             if (jumped) _totalJumps++;
 
             _database.GetTrajectory(result.FrameIndex, _candidateTrajectory);
-            _database.GetBonePositions(result.FrameIndex, _candidateBones);
-            if (_lastCurrentFrame >= 0) _database.GetBonePositions(_lastCurrentFrame, _currentBones);
+            _database.GetBonePoseValues(result.FrameIndex, _candidateBones);
+            if (_lastCurrentFrame >= 0) _database.GetBonePoseValues(_lastCurrentFrame, _currentBones);
 
             _snapshots?.Record(
                 Time.time, result.FrameIndex, frame.ClipIndex, frame.Time,

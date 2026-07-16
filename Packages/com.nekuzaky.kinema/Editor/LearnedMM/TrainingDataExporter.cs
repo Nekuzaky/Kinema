@@ -138,8 +138,13 @@ namespace Kinema.MotionMatching.Editor
             sb.AppendLine($"    \"bone_count\": {schema.BoneCount},");
             sb.AppendLine($"    \"trajectory_position\": [{schema.TrajectoryPositionOffset}, {schema.TrajectoryPointCount * 2}],");
             sb.AppendLine($"    \"trajectory_direction\": [{schema.TrajectoryDirectionOffset}, {schema.TrajectoryPointCount * 2}],");
+            // Named for what the columns hold, so a training script never has to guess: under
+            // InertializationCost there is no velocity block, and bone_position is the composite.
+            sb.AppendLine($"    \"pose_mode\": \"{schema.PoseMode}\",");
+            if (schema.PoseMode != PoseCostMode.Naive)
+                sb.AppendLine($"    \"inertialization_halflife\": {schema.InertializationHalflife.ToString(CultureInfo.InvariantCulture)},");
             sb.AppendLine($"    \"bone_position\": [{schema.BonePositionOffset}, {schema.BoneCount * 3}],");
-            sb.AppendLine($"    \"bone_velocity\": [{schema.BoneVelocityOffset}, {schema.BoneCount * 3}],");
+            sb.AppendLine($"    \"bone_velocity\": [{schema.BoneVelocityOffset}, {schema.GetGroupLength(FeatureGroup.BoneVelocity)}],");
             sb.AppendLine($"    \"root_velocity\": [{schema.RootVelocityOffset}, 2]");
             sb.AppendLine("  },");
 

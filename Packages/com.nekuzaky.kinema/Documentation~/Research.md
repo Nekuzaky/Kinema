@@ -98,8 +98,13 @@ For Kinema that would mean:
 - The cost starts measuring *what the transition will look like* instead of a proxy for it - which is
   the thing `_clipChangeCost` is currently papering over.
 
-It is a schema change: rebake, re-export the LMM dataset, update the feature-layout tests and the
-Analysis tab. It is the single highest-value change on the table and it is not yet done.
+**Shipped in v1.32.0** as `PoseCostMode.InertializationCost`, opt-in on the schema. `Naive` stays the
+default, so no existing bake changes meaning; a config with no mode field deserializes to `Naive`.
+Switching modes requires a rebake, and `IsLayoutCompatibleWith` refuses to mix them - two schemas can
+agree on every count and still write different numbers into the same slots, which is the one
+incompatibility that would otherwise pass silently.
+
+Not yet measured on real data: whether it lowers the jump rate, and what it does to foot slide.
 
 ## Open, honestly
 
