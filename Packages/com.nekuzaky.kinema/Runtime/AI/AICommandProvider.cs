@@ -45,6 +45,13 @@ namespace Kinema.MotionMatching
         [Tooltip("Flee/Follow: desired standoff distance from the target (meters).")]
         [SerializeField, Min(0.5f)] private float _standoff = 2f;
 
+        // Assign this. The fallback below only works in a scene shaped like this package's demo, and
+        // failing to find a player is not something an agent can report by behaving oddly - it just
+        // stands still, forever, with a Follow goal it can never act on.
+        [Tooltip("Who Follow and Flee target. Leave empty only if your player is itself a " +
+                 "MotionMatchingController - the fallback search assumes that and nothing else.")]
+        [SerializeField] private Transform _playerTarget;
+
         [Header("Obstacle avoidance")]
 
         [Tooltip("Steer around obstacles instead of walking into them. Off = straight line to the goal.")]
@@ -136,17 +143,25 @@ namespace Kinema.MotionMatching
         private float _overrideUntil;
         private float _steer;
         private int _preferredSide;
+        private bool _resolved;
 
         #endregion
 
         #region Unity API
 
-        private void Awake()
+        private void Awake() => Resolve();
+
+        /// <summary>
+        /// Finds the brain and the target. Called from Awake, and again from the first Tick if Awake
+        /// never ran - which it does not while a GameObject is inactive. An agent spawned disabled and
+        /// enabled a frame later would otherwise wake with no brain and no target, and report that by
+        /// standing still forever.
+        /// </summary>
+        private void Resolve()
         {
+            _resolved = true;
             _brain = GetComponent<IAIBrain>();
-            // A player reference lets Follow/Flee brains reason about the protagonist without wiring.
-            var player = GetPlayer();
-            if (player != null) _player = player.transform;
+            _player = _playerTarget != null ? _playerTarget : FindPlayerByConvention();
 
             // A fixed side per agent, not a random one: when a head-on obstacle blocks both feelers
             // equally there is no better choice, and re-rolling it every frame makes the agent shiver
@@ -186,6 +201,8 @@ namespace Kinema.MotionMatching
 
         private void Tick(float dt)
         {
+            if (!_resolved) Resolve();
+
             var context = new AIContext
             {
                 Position = transform.position,
@@ -378,12 +395,26 @@ namespace Kinema.MotionMatching
 
         private static Vector3 Flat(Vector3 v) { v.y = 0f; return v; }
 
-        /// <summary>Finds the player: a MotionMatchingController that is NOT itself AI-driven.</summary>
-        private static GameObject GetPlayer()
+        /// <summary>
+        /// Last resort when <see cref="_playerTarget"/> is empty: the one MotionMatchingController in
+        /// the scene that is not itself AI-driven.
+        ///
+        /// That is a convenience for scenes shaped like this package's demo, where the player is a
+        /// matched character too. It is wrong for most real games - an FPS player is a capsule and a
+        /// camera, carries no MotionMatchingController, and this finds nothing. So it says so, loudly,
+        /// once: an agent that cannot find its target does not misbehave in any visible way. It stands
+        /// perfectly still holding a Follow goal it can never act on, which looks like the AI being
+        /// broken rather than the AI having nothing to follow.
+        /// </summary>
+        private Transform FindPlayerByConvention()
         {
             foreach (var controller in FindObjectsByType<MotionMatchingController>(FindObjectsSortMode.None))
                 if (controller.GetComponent<AICommandProvider>() == null)
-                    return controller.gameObject;
+                    return controller.transform;
+
+            Debug.LogError($"[Kinema] '{name}': Player Target is empty and no non-AI " +
+                           "MotionMatchingController exists to fall back on, so Follow and Flee have " +
+                           "nothing to aim at and this agent will stand still. Assign Player Target.", this);
             return null;
         }
 

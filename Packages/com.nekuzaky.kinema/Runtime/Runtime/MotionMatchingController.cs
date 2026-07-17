@@ -468,14 +468,23 @@ namespace Kinema.MotionMatching
             if (_initialized) Teardown();
             if (!Application.isPlaying) return;
 
+            // Errors, and the component switches itself off. These are not preferences that can be
+            // warned about and worked around - without them nothing can happen at all, and a warning
+            // scrolls out of the console while the component sits there looking enabled and alive.
+            // An unticked checkbox in the inspector is a state you can see an hour later.
             if (_database == null || !_database.IsValid)
             {
-                Debug.LogWarning($"[MotionMatching] '{name}' has no valid database assigned.", this);
+                Debug.LogError($"[Kinema] '{name}': no valid database, so this controller does nothing. " +
+                               "Assign a baked MotionMatchingDatabase - note that is the *Database* " +
+                               "asset, not the Config it was baked from; the two are named alike.", this);
+                enabled = false;
                 return;
             }
             if (_animator == null)
             {
-                Debug.LogWarning($"[MotionMatching] '{name}' requires an Animator.", this);
+                Debug.LogError($"[Kinema] '{name}': no Animator, so this controller does nothing. " +
+                               "It poses a skeleton through a PlayableGraph and needs one to pose.", this);
+                enabled = false;
                 return;
             }
 
@@ -971,18 +980,30 @@ namespace Kinema.MotionMatching
             _queryBonesPrimed = false;
             _queryBonesValid = count > 0;
 
+            // Every missing bone, in one message. Reporting the first and returning means fixing the
+            // rig one name per play session, and each of those is a full diagnostic round trip.
+            System.Collections.Generic.List<string> missing = null;
             for (int b = 0; b < count; b++)
             {
                 _queryBones[b] = FindDeepChild(transform, names[b]);
-                if (_queryBones[b] == null)
-                {
-                    _queryBonesValid = false;
-                    if (_livePoseQuery)
-                        Debug.LogWarning($"[MotionMatching] '{name}': bone '{names[b]}' not found on this rig; " +
-                                         "the pose query falls back to copying the current database frame.", this);
-                    return;
-                }
+                if (_queryBones[b] != null) continue;
+
+                _queryBonesValid = false;
+                (missing ??= new System.Collections.Generic.List<string>()).Add(names[b]);
             }
+
+            if (missing == null) return;
+
+            // An error even though there is a fallback. A rig that does not carry the bones the
+            // database was baked against is the wrong rig, and the fallback quietly demotes the pose
+            // query to copying the current frame - which still animates, still looks alive, and
+            // matches against a pose nobody is standing in. Silent degradation to a worse mode is
+            // the single most expensive thing this package can do to someone.
+            Debug.LogError($"[Kinema] '{name}': this rig is missing {missing.Count} of the " +
+                           $"{count} bones the database was baked against: {string.Join(", ", missing)}. " +
+                           "Either it is the wrong rig, or the database was baked from a different one. " +
+                           "The pose query is falling back to copying the current database frame, so " +
+                           "matching still runs - against a pose the character is not in.", this);
         }
 
         private void SampleQueryBones(float dt)

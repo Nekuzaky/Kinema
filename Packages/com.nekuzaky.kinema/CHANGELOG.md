@@ -4,6 +4,40 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.41.0] - 2026-07-16
+
+Every item here comes from someone integrating the package into an FPS and paying for it in debugging
+cycles. Each was a *silent* failure - a warning that scrolls past, or a quiet demotion to a worse
+mode - and each cost a full diagnostic round trip to find. Silence is the expensive part, not the
+bug.
+
+### Fixed
+- **No database, or no Animator, is now an error and disables the component.** It was a warning and a
+  `return`: the component sat there looking enabled and alive while doing nothing forever. An
+  unticked checkbox is a state you can still see an hour later. The message also names the trap that
+  produced it - the Config and the Database are different assets and the bake names them alike.
+- **A rig missing the schema's bones is now an error, and reports all of them at once.** It reported
+  the first and returned, so a wrong rig was fixed one bone name per play session. It is an error
+  rather than a warning because the fallback is a *silent demotion*: the pose query starts copying the
+  current database frame, which still animates and still looks alive while matching against a pose
+  the character is not in.
+- **`AICommandProvider` now has a `Player Target` field, and errors when it has nothing to target.**
+  It searched for a `MotionMatchingController` without an `AICommandProvider` - which finds the player
+  in this package's demo and nothing at all in a game whose player is a capsule and a camera. The
+  failure was invisible: agents stood still holding a Follow goal they could never act on, which reads
+  as the AI being broken rather than the AI having nothing to follow.
+- **`AICommandProvider` re-resolves on its first tick if `Awake` never ran.** Awake does not run while
+  a GameObject is inactive, so a pooled or spawned-disabled agent woke with no brain and no target and
+  no way to say so.
+
+### Added
+- `Documentation~/index.md`: **Integrating it into a game that is not the demo**. The demo scene is
+  not a neutral example - it is one where the player is itself a matched character, and several
+  defaults assume that. Covers the above, plus the one that has no error to give: **the controller
+  poses a skeleton and moves nothing**. There is no motor in the runtime by design; something has to
+  consume the root motion `OnAnimatorMove` delivers, or the character animates in place and nothing
+  about it looks wrong.
+
 ## [1.40.0] - 2026-07-16
 
 ### Added

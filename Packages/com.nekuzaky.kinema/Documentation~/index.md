@@ -65,6 +65,52 @@ All frames are concatenated, per-dimension mean/std are computed, the data is no
 database, and - only if a candidate clearly beats continuing the current clip - crossfades to it.
 Locomotion intent is read from an `ILocomotionProvider`, so the same controller serves players and AI.
 
+## Integrating it into a game that is not the demo
+
+Everything here comes from someone integrating the package into an FPS and paying for it in debugging
+cycles. The demo scene is not a neutral example: it is a scene where the player is *itself* a matched
+character, and several defaults quietly assume that.
+
+**The controller poses a skeleton. It does not move anything.** There is no motor in the runtime, on
+purpose - a game already owns how its characters move. The controller picks a clip; the clip's root
+motion is delivered to `OnAnimatorMove`, and *something you write* has to consume it and call
+`Move()`. The demo's `CharacterMotor` (in the sample) is one such thing, and is worth reading before
+writing your own. Without one, the character animates in place and nothing about it looks like an
+error.
+
+**`AICommandProvider.Player Target` is a field. Assign it.** If it is empty, the provider falls back
+to searching for a `MotionMatchingController` that has no `AICommandProvider` - which finds the player
+in this package's demo and nothing at all in a game where the player is a capsule and a camera. An
+agent that cannot find its target does not misbehave visibly: it stands still holding a Follow goal
+it can never act on. That now logs an error rather than being inferred from frozen NPCs.
+
+**The Database and the Config are different assets, and the bake names them alike.**
+`MyConfig` is the recipe; `MyConfigDatabase` is what the bake produced. The controller wants the
+Database.
+
+**The rig has to carry the bones the database was baked against.** They are matched by transform
+name. Bake against one rig and run against another - even a near-identical one - and the names miss;
+the pose query then silently demotes itself to copying the current database frame, which still
+animates and still looks alive while matching against a pose the character is not in. That now
+reports every missing bone at once, as an error.
+
+**Awake does not run while a GameObject is inactive.** Anything spawned disabled and enabled later -
+a pooled enemy, most obviously - would miss a resolve that only happened in `Awake`. The components
+here re-resolve on their first tick for that reason. If you write your own, do the same.
+
+### What is an error, and what is not
+
+A hard error means *nothing can happen*: no database, no Animator, an AI with nothing to target, a rig
+missing the schema's bones. These disable the component or say plainly that it will do nothing.
+
+A warning means *something will be worse than you expect*: a database with no tags, a tag name that
+matched nothing. These still run.
+
+Neither is verbose logging, which is off by default (**Settings > Verbose logging**) and prints
+transitions - a vault firing, an AI changing goal. For the state of everything at once, use **Copy
+Diagnostics** in the window header: it puts every number about every character in the scene on the
+clipboard as plain text.
+
 ## Editor tool
 
 `Tools > Kinema > Motion Matching Window` (Ctrl+Shift+M):
