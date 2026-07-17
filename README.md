@@ -125,7 +125,7 @@ input, camera orbit, URP post-processing, vault and free-jump events.
 Unity Package Manager, "Add package from git URL":
 
 ```
-https://github.com/Nekuzaky/kinema.git?path=/Packages/com.nekuzaky.kinema
+https://github.com/Nekuzaky/kinema_motion_matching.git?path=/Packages/com.nekuzaky.kinema
 ```
 
 Requires Unity 6000.3+. The runtime depends on Burst and Mathematics, both resolved automatically by
