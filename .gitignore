@@ -130,3 +130,6 @@ InitTestScene*.unity*
 # Python bytecode
 __pycache__/
 *.pyc
+
+# Unity Asset Store publishing tool - installed per-developer, never part of the product
+/Packages/com.unity.asset-store-tools/
