@@ -126,3 +126,7 @@ InitTestScene*.unity*
 
 # JetBrains Rider
 /.idea/
+
+# Python bytecode
+__pycache__/
+*.pyc

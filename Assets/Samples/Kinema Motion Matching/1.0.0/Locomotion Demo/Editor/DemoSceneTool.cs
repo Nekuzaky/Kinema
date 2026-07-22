@@ -90,6 +90,11 @@ namespace Kinema.MotionMatching.Samples.Editor
             error = null;
             DemoBake bake;
 
+            // The Opsive path is gated behind KINEMA_OPSIVE and off by default. The published package
+            // integrates no third-party product a buyer may not own; someone who has the OmniAnimation
+            // pack adds the define (Project Settings > Player > Scripting Define Symbols) to switch it
+            // on. Nothing about it ships enabled.
+#if KINEMA_OPSIVE
             if (OpsivePackSetup.PackAvailable)
             {
                 if (!OpsivePackSetup.TryBake(out bake))
@@ -97,8 +102,12 @@ namespace Kinema.MotionMatching.Samples.Editor
                     error = "The mocap pack is installed but could not be baked. See the Console for the reason.";
                     return false;
                 }
+                BuildScene(bake, flavor);
+                return true;
             }
-            else if (DemoSetup.FbxAvailable)
+#endif
+
+            if (DemoSetup.FbxAvailable)
             {
                 if (!DemoSetup.TryBake(out bake))
                 {
@@ -108,8 +117,9 @@ namespace Kinema.MotionMatching.Samples.Editor
             }
             else
             {
-                error = $"Nothing to build from. Install a mocap pack, or drop a character FBX in " +
-                        $"{DemoPaths.Character} and run this again.";
+                error = $"Nothing to build from. Drop a Humanoid character FBX in {DemoPaths.Character} " +
+                        "and run this again - the demo bakes its clips, or generates a locomotion set " +
+                        "if it is just a skin.";
                 return false;
             }
 

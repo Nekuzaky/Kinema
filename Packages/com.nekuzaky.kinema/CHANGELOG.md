@@ -4,6 +4,28 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.42.0] - 2026-07-16
+
+Asset Store hygiene: nothing third-party ships or is referenced by default.
+
+### Changed
+- The Opsive OmniAnimation integration (`OpsivePackSetup`, and its branch in the demo generator) is
+  gated behind a `KINEMA_OPSIVE` scripting define and **off by default**. The published package now
+  carries no reference to a third-party product a buyer may not own; an owner of the pack turns it on
+  in Project Settings > Player > Scripting Define Symbols. The pack is never redistributed - the code
+  only bakes a copy the owner already has.
+- With Opsive off, the demo resolves from a Humanoid FBX dropped in the sample's Character folder,
+  baking its clips or generating a locomotion set from a bare skin. The "install a mocap pack"
+  wording is gone from the default path.
+
+### Removed
+- A stray `__pycache__/*.pyc` that was tracked under `Documentation~/Training`, and a gitignore rule
+  so it stays gone.
+
+### Notes
+- Still required before a store submission, and none of it is code: a demo character the license
+  covers (the Mixamo rig used in development is not redistributable), a visual QA pass on a clean
+  project, and the test suite run green in CI. See the Asset Store readiness checklist in the commit.
 ## [1.41.0] - 2026-07-16
 
 Every item here comes from someone integrating the package into an FPS and paying for it in debugging

@@ -1,3 +1,8 @@
+// Optional integration with the Opsive OmniAnimation mocap pack, a separately licensed third-party
+// product. Compiled out unless KINEMA_OPSIVE is defined, so the published package carries no trace of
+// a product a buyer may not own. An owner enables it in Project Settings > Player > Scripting Define
+// Symbols. The pack itself is never redistributed - this only bakes a copy the owner already has.
+#if KINEMA_OPSIVE
 using System.Collections.Generic;
 using System.Linq;
 using Kinema.MotionMatching.Editor;
@@ -398,3 +403,5 @@ namespace Kinema.MotionMatching.Samples.Editor
         #endregion
     }
 }
+
+#endif
