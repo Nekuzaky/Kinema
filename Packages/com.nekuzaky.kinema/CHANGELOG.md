@@ -4,6 +4,25 @@ All notable changes to this package are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.43.0] - 2026-07-16
+
+Asset Store readiness, continued: say what is not ours, and prove the runtime runs.
+
+### Added
+- `THIRD-PARTY-NOTICES.md`: exactly what a buyer receives and what they do not. The package ships
+  only first-party code and Unity's own dependencies - no mocap, no rig, no third-party runtime. The
+  Mixamo character used in development and the optional Opsive integration are named as *not shipped*,
+  with the reason. This is the first thing an Asset Store reviewer looks for.
+- CI now runs the **PlayMode** suite alongside EditMode. EditMode proves the maths; PlayMode drives a
+  real controller - live PlayableGraph, real searches, real transitions - and is the only thing that
+  proves the runtime loop actually runs. Four PlayMode test files existed and were never run by CI. A
+  green EditMode badge over untested runtime code is not a reassurance worth selling.
+
+### Notes
+- What is still not code, and still required before submission: a demo character under a
+  redistributable license, a visual QA pass on a clean project, and the suites confirmed green once
+  the `UNITY_LICENSE` secret is set (CI cannot run without it).
+
 ## [1.42.0] - 2026-07-16
 
 Asset Store hygiene: nothing third-party ships or is referenced by default.
